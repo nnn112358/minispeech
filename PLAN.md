@@ -6,11 +6,11 @@
 ## アーキテクチャ
 
 ```
-テキスト → OpenJTalk g2p → [FastSpeech2 lightning] → 80-mel → [SqueezeWave] → 22050Hz 波形
+テキスト → OpenJTalk g2p → [FastSpeech lightning] → 80-mel → [SqueezeWave] → 22050Hz 波形
 ```
 
 - 共通 mel: `PiperMelFeatures` (sr22050 / n_fft1024 / hop256 / win1024, center=False, log-clamp 1e-5)。音響モデルの出力とボコーダの入力が完全一致。
-- 音響モデル: FastSpeech2 lightning (非AR, DurationPredictor のみ, pitch/energy なし)。`src/cli/train_fastspeech.py`。
+- 音響モデル: FastSpeech lightning (非AR, DurationPredictor のみ, pitch/energy なし)。`src/cli/train_fastspeech.py`。
 - ボコーダ: SqueezeWave (WaveGlow 系の正規化フロー, 非AR・並列)。`src/sqzw/model.py`。
 
 ## 設計判断 (なぜ SqueezeWave)
@@ -30,7 +30,7 @@
 
 ## 自己アライメント ★VITS 依存除去
 
-FastSpeech2 lightning の継続長取得に VITS MAS が必要だった依存を完全除去。
+FastSpeech lightning の継続長取得に VITS MAS が必要だった依存を完全除去。
 
 - **AlignmentEncoder** (cosine 類似度 + 学習可能 scale) + **ForwardSumLoss** (CTC) + **beta-binomial 事前分布** (対角線誘導、40% で消す) + **MAS** (hard 継続長)
 - `--learn-alignment` で学習。aligner 層は保存時に除外 (推論は DurationPredictor のみ)
@@ -75,7 +75,7 @@ HiFi-GAN (VITS TTS 標準構成: ResBlock2, 256ch) と Vocos (ConvNeXt + iSTFT) 
 - [x] SqueezeWave a256_c128 / c64_f8_l4 の品質・速度両立
 - [x] 比較ボコーダ: Vocos standalone trainer (`cli/vocos_train.py`)
 - [x] 比較ボコーダ: HiFi-GAN VITS TTS 標準構成 (`cli/hifigan_train.py`)
-- [x] FastSpeech2 lightning 自己アライメント (`--learn-alignment`, VITS 依存除去)
+- [x] FastSpeech lightning 自己アライメント (`--learn-alignment`, VITS 依存除去)
 - [x] つくよみちゃん話者適応 (encoder fine-tune + vocoder fine-tune)
 - [x] ONNX CPU ベンチマーク (4ボコーダ比較)
 - [x] コードリファクタリング: GAN D/G step 共通化、eval 共通化、import 整理
@@ -84,6 +84,6 @@ HiFi-GAN (VITS TTS 標準構成: ResBlock2, 256ch) と Vocos (ConvNeXt + iSTFT) 
 ## 残課題
 
 - [ ] JSUT 全ボコーダ学習 (HiFi-GAN 50k / Vocos resume 40k+10k) — 実行中
-- [ ] 音響モデル高速化: ボコーダ縮小で FastSpeech2 lightning (11ms) が律速に
+- [ ] 音響モデル高速化: ボコーダ縮小で FastSpeech lightning (11ms) が律速に
 - [ ] (任意) c64_f8_l8 等の中間構成を GAN 仕上げ / より攻めた構成
 - 中間・探索チェックポイントは `_unused/` に隔離 (復元可)
