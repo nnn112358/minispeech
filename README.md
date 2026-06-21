@@ -31,18 +31,19 @@
 テキスト (の音素列) からメルスペクトログラムを生成する音響モデルです。
 FastSpeech をベースに、軽量化と自己アライメント機能の追加を行っています。
 
-| | FastSpeech (原論文) | MiniSpeech (本リポ) |
-|---|---|---|
-| エンコーダ/デコーダ | Self-Attention (FFT Block) | depthwise-separable Conv のみ |
-| Duration Predictor | あり (教師 AR モデルから蒸留) | あり (**自己アライメント**で自動取得) |
-| Pitch/Energy Predictor | なし | なし |
-| 外部依存 | 教師モデル (Transformer TTS) が必要 | 不要 (自己完結で学習可能) |
+| | FastSpeech (原論文) | FastSpeech 2 (原論文) | MiniSpeech (本リポ) |
+|---|---|---|---|
+| エンコーダ/デコーダ | Self-Attention (FFT Block) | Self-Attention (FFT Block) | depthwise-separable Conv のみ |
+| Duration Predictor | あり (教師 AR モデルから蒸留) | あり (MFA で取得) | あり (**自己アライメント**で自動取得) |
+| Pitch Predictor | なし | **あり** | なし |
+| Energy Predictor | なし | **あり** | なし |
+| 外部依存 | 教師モデル (Transformer TTS) | MFA (強制アライメント) | 不要 (自己完結で学習可能) |
 
 - **自己アライメント** (`--learn-alignment`): テキストと音声の対応を学習中に
   自動で獲得。外部ツール (VITS, MFA, 教師モデル) が不要になる
 
 関連資料:
-- 論文: [FastSpeech (Ren et al., 2019)](https://arxiv.org/abs/1905.09263)
+- 論文: [FastSpeech (Ren et al., 2019)](https://arxiv.org/abs/1905.09263)、[FastSpeech 2 (Ren et al., 2020)](https://arxiv.org/abs/2006.04558)
 - 自己アライメント手法: [One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447)
 - 読み変換: [OpenJTalk](https://open-jtalk.sp.nitech.ac.jp/)
 
