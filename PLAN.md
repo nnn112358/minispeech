@@ -1,4 +1,4 @@
-# fast-jtts — 設計ノート・進捗
+# mini-jtts — 設計ノート・進捗
 
 対象: JSUT 単一話者 22050Hz / 比較ボコーダ: Vocos・HiFi-GAN
 構成・実行方法は [README.md](README.md) 参照。本書は設計判断・進捗・残課題。

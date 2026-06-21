@@ -5,7 +5,7 @@ from torch import nn
 from vocos.modules import safe_log
 
 # NOTE: EncodecFeatures (which required the `encodec` package) removed in this
-# vendored copy — fast-jtts only uses FeatureExtractor (base) + a custom mel.
+# vendored copy — mini-jtts only uses FeatureExtractor (base) + a custom mel.
 
 
 class FeatureExtractor(nn.Module):

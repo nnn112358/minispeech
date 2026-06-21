@@ -2,7 +2,7 @@
 # Full JSUT training pipeline: encoder → HiFi-GAN → Vocos → SqueezeWave
 # SqueezeWave is already trained (NLL→aux→GAN→BN recal done), so only eval.
 set -euo pipefail
-cd /home/nnn/fast-jtts
+cd /home/nnn/mini-jtts
 PY=~/.venvs/piper_ft/bin/python
 LOG=logs/jsut_all_$(date +%Y%m%d_%H%M%S).log
 mkdir -p logs fs/jsut_align checkpoints/hifigan_jsut checkpoints/vocos_jsut
