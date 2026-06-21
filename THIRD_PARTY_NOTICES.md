@@ -27,12 +27,12 @@ This project vendors / derives from the following open-source software.
 
 ## Piper — `src/sqzw/mel.py`
 - `spectrogram_torch` vendored from https://github.com/rhasspy/piper (MIT License),
-  so the FastSpeech-output mel and the vocoder-input mel are bit-identical.
+  so the MiniSpeech-output mel and the vocoder-input mel are bit-identical.
 
 ## Starting point
-- The FastSpeech + SqueezeWave integration was bootstrapped from
+- The SqueezeWave integration was bootstrapped from
   https://github.com/alokprasad/fastspeech_squeezewave (only SqueezeWave was used;
-  the acoustic model here is an independent, minimal FastSpeech).
+  the acoustic model MiniSpeech is an independent implementation).
 
 ## Data
 - Training uses the JSUT corpus (https://sites.google.com/site/shinnosuketakamichi/publication/jsut),

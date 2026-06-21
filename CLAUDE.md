@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Two-stage non-autoregressive Japanese TTS targeting edge NPU (AX650N):
-**OpenJTalk g2p → FastSpeech (text→mel) → SqueezeWave vocoder (mel→audio)**
+Two-stage non-autoregressive Japanese TTS:
+**OpenJTalk g2p → MiniSpeech (text→mel) → SqueezeWave vocoder (mel→audio)**
 
-All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). FastSpeech output and vocoder input are bit-identical by design.
+All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). MiniSpeech output and vocoder input are bit-identical by design.
 
 ## Running scripts
 
@@ -23,7 +23,7 @@ python src/cli/finetune_aux.py --ckpt checkpoints/run1/last.pth
 python src/cli/finetune_gan.py --ckpt checkpoints/run1/aux_last.pth --w-mel 45
 python src/cli/bake_bnrecal.py --ckpt checkpoints/run1/gan_last.pth
 
-# FastSpeech acoustic model
+# MiniSpeech acoustic model
 python src/cli/train_fastspeech.py --manifest fs_data/tyc/fs_manifest.json --learn-alignment
 python src/cli/train_fastspeech.py --manifest fs_data/tyc/fs_manifest.json  # with precomputed durations
 
@@ -49,25 +49,25 @@ python src/tools/bench_onnx.py         # single-model ONNX latency
 - `src/tools/` — dev-only analysis, plotting, sweeps, diagnostics
 - `src/vocos/` — vendored Vocos (trimmed, MIT); discriminators used for GAN training only
 - `scripts/` — bash pipelines that compose CLI scripts into full recipes
-- `npu/` — Pulsar2 config templates (*.json tracked, build artifacts gitignored)
+- `npu/` — Pulsar2 config templates (build artifacts gitignored)
 - `_unused/`, `_legacy/` — archived experiments (not part of active codebase)
 
 ## Key architecture details
 
 - **SqueezeWave** (`sqzw/model.py`): WaveGlow-derived normalizing flow. All architecture params (n_audio_channel, n_flows, n_layers, etc.) are CLI flags, not hardcoded.
 - **Quality recipe**: NLL pre-train → aux fine-tune (differentiable reverse flow + mel-L1 + multi-res STFT) → GAN fine-tune (Vocos MPD/MRD, `w_mel=45` anchor) → BN recalibration. Discriminators are training-only (zero inference cost).
-- **FastSpeech** (`cli/train_fastspeech.py`): minimal non-AR (depthwise-separable conv blocks, duration predictor only — no pitch/energy). Supports two alignment modes: `--learn-alignment` (self-aligning via AlignmentEncoder + CTC + MAS, no external dependency) or precomputed durations in manifest.
+- **MiniSpeech** (`cli/train_fastspeech.py`): minimal non-AR acoustic model (depthwise-separable conv blocks, duration predictor only — no pitch/energy). Supports two alignment modes: `--learn-alignment` (self-aligning via AlignmentEncoder + CTC + MAS, no external dependency) or precomputed durations in manifest.
 - **Self-alignment** (`sqzw/alignment.py`, `sqzw/monotonic_align.py`): cosine-similarity attention with learnable scale + beta-binomial diagonal prior + forward-sum (CTC) loss. MAS extracts hard durations. Aligner weights are stripped at save time (inference uses only the duration predictor).
 - **HiFi-GAN** (`sqzw/hifigan_gen.py`): defaults to piper config (ResBlock2, 256ch, upsample 8×8×4). Used as a comparison baseline, not the primary vocoder.
-- **PiperMelFeatures** (`sqzw/features.py`): the shared mel contract. Any change here breaks compatibility between FastSpeech and all vocoders.
+- **PiperMelFeatures** (`sqzw/features.py`): the shared mel contract. Any change here breaks compatibility between MiniSpeech and all vocoders.
 
 ## Conventions
 
 - No build system (no setup.py/pyproject.toml). Plain `pip install -r requirements.txt` + CUDA torch installed separately.
 - ONNX export wraps noise `z` as an input (not sampled internally) for NPU determinism.
-- Checkpoint format: `{"model": state_dict, "config": arch_params, ...}` for SqueezeWave; `{"model": state_dict, "n_sym": int, "epoch": int}` for FastSpeech.
+- Checkpoint format: `{"model": state_dict, "config": arch_params, ...}` for SqueezeWave; `{"model": state_dict, "n_sym": int, "epoch": int}` for MiniSpeech.
 - Data filelists are newline-separated absolute or repo-relative paths to 22.05 kHz mono wavs.
-- FastSpeech manifest: JSON array of `{phoneme_ids, durations (optional), mel (npy path), n_frames}`.
+- MiniSpeech manifest: JSON array of `{phoneme_ids, durations (optional), mel (npy path), n_frames}`.
 - BN recalibration (`bake_bnrecal.py`) is mandatory after GAN fine-tune — without it, train/eval distribution mismatch causes audible artifacts.
 
 ## Gotchas
