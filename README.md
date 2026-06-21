@@ -29,24 +29,28 @@
 ## MiniSpeech とは？
 
 テキスト (の音素列) からメルスペクトログラムを生成する音響モデルです。
-本リポジトリで独自に設計・実装しました。
 
-非自己回帰 TTS の一般的な構成 (Encoder → Duration Predictor → Decoder) に、
-[ConvNeXt](https://arxiv.org/abs/2201.03545) 風の軽量 conv ブロックと
-[FastPitch](https://arxiv.org/abs/2006.06873) 由来の自己アライメントを組み合わせた独自設計です。
+[piper](https://github.com/rhasspy/piper) (VITS ベースの TTS) を分解し、
+重い部分 (Self-Attention, VAE, Normalizing Flow) を削って
+軽量な depthwise-separable Conv ブロックに置き換えたものです。
+自己アライメントのコード (`monotonic_align.py`) や mel 計算 (`mel.py`) も piper から持ってきています。
 
 ### 設計の背景
 
-多くの非自己回帰 TTS (FastSpeech, FastSpeech 2 など) はエンコーダ・デコーダに Self-Attention を使います。
-Self-Attention は「文中の離れた位置の情報を直接参照する」仕組みで、長距離の依存関係を捉えられます。
+piper (VITS) はエンドツーエンドで高品質ですが、モデル全体で約 30M パラメータあり、
+構造が複雑 (Transformer encoder + VAE + Flow + HiFi-GAN decoder の一体型) です。
 
-MiniSpeech はこれを **depthwise-separable Conv に置き換え**ています。
-理由は、Duration Predictor が「どの音素が何フレーム続くか」を決定した後、
-エンコーダ出力を引き伸ばした (Length Regulator) デコーダ側では
-隣接フレームがほぼ同じ音素に対応するため、局所的な畳み込みだけで十分なためです。
-Pitch / Energy Predictor も、単一話者であれば Duration Predictor のみで実用上の品質が得られるため省略しています。
+MiniSpeech では、piper の構成要素のうち:
+- **Transformer encoder** → depthwise-separable Conv に置き換え
+- **VAE + Flow** → 削除 (Duration Predictor + Length Regulator で十分)
+- **HiFi-GAN decoder** → 分離して独立ボコーダに (交換可能に)
+- **Pitch / Energy Predictor** → 省略 (単一話者なら Duration Predictor のみで十分)
 
-結果として 3.08M パラメータ・外部ツール不要の自己完結モデルになっています。
+とすることで、3.08M パラメータ・外部ツール不要の自己完結モデルにしています。
+
+Self-Attention を Conv に置き換えられる理由は、Duration Predictor が「どの音素が何フレーム続くか」を
+決定した後は、デコーダ側では隣接フレームがほぼ同じ音素に対応するため、
+局所的な畳み込みだけで十分なためです。
 
 ### piper (VITS) との比較
 
@@ -72,9 +76,8 @@ CTC 損失で単調性を誘導し、MAS で hard な継続長を抽出します
 
 ### 関連資料
 
-- Conv ブロック設計: [ConvNeXt (Liu et al., 2022)](https://arxiv.org/abs/2201.03545)
-- 自己アライメント: [FastPitch (Łańcucki, 2021)](https://arxiv.org/abs/2006.06873)、[One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447)
-- 比較対象 (表中): [piper (VITS)](https://github.com/rhasspy/piper)
+- 元にした TTS: [piper (VITS)](https://github.com/rhasspy/piper)
+- 自己アライメント手法: [One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447)
 - 読み変換: [OpenJTalk](https://open-jtalk.sp.nitech.ac.jp/)
 
 ## SqueezeWave とは？
