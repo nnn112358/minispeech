@@ -29,7 +29,22 @@
 ## MiniSpeech とは？
 
 テキスト (の音素列) からメルスペクトログラムを生成する音響モデルです。
-FastSpeech をベースに、軽量化と自己アライメント機能の追加を行っています。
+本リポジトリで独自に設計・実装しました。
+
+### 設計の背景
+
+FastSpeech / FastSpeech 2 はエンコーダ・デコーダに Self-Attention (FFT Block) を使います。
+Self-Attention は「文中の離れた位置の情報を直接参照する」仕組みで、長距離の依存関係を捉えられます。
+
+MiniSpeech はこれを **depthwise-separable Conv に置き換え**ています。
+理由は、Duration Predictor が「どの音素が何フレーム続くか」を決定した後、
+エンコーダ出力を引き伸ばした (Length Regulator) デコーダ側では
+隣接フレームがほぼ同じ音素に対応するため、局所的な畳み込みだけで十分なためです。
+Pitch / Energy Predictor も、単一話者であれば Duration Predictor のみで実用上の品質が得られるため省略しています。
+
+結果として 3.08M パラメータ・外部ツール不要の自己完結モデルになっています。
+
+### 原論文との比較
 
 | | FastSpeech (原論文) | FastSpeech 2 (原論文) | MiniSpeech (本リポ) |
 |---|---|---|---|
@@ -39,10 +54,18 @@ FastSpeech をベースに、軽量化と自己アライメント機能の追加
 | Energy Predictor | なし | **あり** | なし |
 | 外部依存 | 教師モデル (Transformer TTS) | MFA (強制アライメント) | 不要 (自己完結で学習可能) |
 
-- **自己アライメント** (`--learn-alignment`): テキストと音声の対応を学習中に
-  自動で獲得。外部ツール (VITS, MFA, 教師モデル) が不要になる
+### 自己アライメント
 
-関連資料:
+テキストと音声の時間的な対応 (継続長) を、学習中に自動で獲得します (`--learn-alignment`)。
+外部ツール (VITS, MFA, 教師モデル) が不要になります。
+
+手法は [One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447) に基づきます:
+AlignmentEncoder (cosine 類似度) で soft alignment を求め、
+CTC 損失で単調性を誘導し、MAS で hard な継続長を抽出します。
+アライメント用の重みは学習時のみ使用し、推論時は Duration Predictor だけで動きます。
+
+### 関連資料
+
 - 論文: [FastSpeech (Ren et al., 2019)](https://arxiv.org/abs/1905.09263)、[FastSpeech 2 (Ren et al., 2020)](https://arxiv.org/abs/2006.04558)
 - 自己アライメント手法: [One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447)
 - 読み変換: [OpenJTalk](https://open-jtalk.sp.nitech.ac.jp/)
