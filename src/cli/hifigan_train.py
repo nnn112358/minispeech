@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Standalone Vocos mel-vocoder GAN trainer. Reuses vocos's proven components:
-PiperMelFeatures -> VocosBackbone -> ISTFTHead, with MultiPeriod/MultiResolution
-discriminators + Vocos losses. Trains on 22050 Hz wavs (filelist)."""
+"""HiFi-GAN mel-vocoder GAN trainer. Same discriminators/losses as vocos_train.py
+with the HiFi-GAN generator swapped in, so quality/speed differences are purely
+the generator. --init-channels 256 = piper config (default), 512 = V1."""
 import os, sys, time, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
@@ -9,18 +9,19 @@ from torch.utils.data import DataLoader
 from vocos.discriminators import MultiPeriodDiscriminator, MultiResolutionDiscriminator
 from vocos.loss import DiscriminatorLoss, GeneratorLoss, FeatureMatchingLoss, MelSpecReconstructionLoss
 from sqzw.flow import WavSet
-from sqzw.vocos_gen import Generator
+from sqzw.hifigan_gen import Generator
 from sqzw.gan_train import disc_loss, gen_adv_loss
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--filelist", default="data/filelist_train.txt")
-    ap.add_argument("--out", default="data/ckpts")
+    ap.add_argument("--out", default="checkpoints/hifigan")
     ap.add_argument("--max-steps", type=int, default=300000)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--num-samples", type=int, default=16384)
-    ap.add_argument("--lr", type=float, default=5e-4)
+    ap.add_argument("--lr", type=float, default=2e-4)
+    ap.add_argument("--init-channels", type=int, default=256, help="256=piper (default), 512=HiFi-GAN V1")
     ap.add_argument("--mel-coeff", type=float, default=45.0)
     ap.add_argument("--mrd-coeff", type=float, default=0.1)
     ap.add_argument("--save-every", type=int, default=5000)
@@ -29,15 +30,19 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    G = Generator().to(dev)
+    init_ch = a.init_channels
+    resume_ck = None
     if a.resume:
-        ck = torch.load(a.resume, map_location=dev)
-        G.load_state_dict(ck["G"])
-        print(f"resumed G from {a.resume} (was step {ck.get('step')}) -> fine-tune", flush=True)
+        resume_ck = torch.load(a.resume, map_location=dev)
+        init_ch = resume_ck.get("init_channels", init_ch)
+    G = Generator(init_channels=init_ch).to(dev)
+    if resume_ck is not None:
+        G.load_state_dict(resume_ck["G"])
+        print(f"resumed G from {a.resume} (step {resume_ck.get('step')}, ch={init_ch}) -> fine-tune", flush=True)
     mpd = MultiPeriodDiscriminator().to(dev); mrd = MultiResolutionDiscriminator().to(dev)
     dloss_fn = DiscriminatorLoss(); gloss_fn = GeneratorLoss(); fmloss_fn = FeatureMatchingLoss()
     melloss = MelSpecReconstructionLoss(sample_rate=22050).to(dev)
-    print(f"G params={sum(p.numel() for p in G.parameters())/1e6:.2f}M device={dev}", flush=True)
+    print(f"HiFi-GAN G params={sum(p.numel() for p in G.parameters())/1e6:.2f}M (init_ch={init_ch}) device={dev}", flush=True)
 
     opt_g = torch.optim.AdamW(G.parameters(), lr=a.lr, betas=(0.8, 0.9))
     opt_d = torch.optim.AdamW(list(mpd.parameters()) + list(mrd.parameters()), lr=a.lr, betas=(0.8, 0.9))
@@ -65,10 +70,10 @@ def main():
             if step % 100 == 0:
                 print(f"step {step}/{a.max_steps} d {loss_d.item():.3f} g {loss_g.item():.3f} mel {l_mel.item():.3f} {time.time()-t0:.0f}s", flush=True)
             if step % a.save_every == 0 or step == a.max_steps:
-                torch.save({"G": G.state_dict(), "opt_g": opt_g.state_dict(),
-                            "opt_d": opt_d.state_dict(), "step": step}, f"{a.out}/vocos_step{step}.pth")
-                torch.save({"G": G.state_dict(), "opt_g": opt_g.state_dict(),
-                            "opt_d": opt_d.state_dict(), "step": step}, f"{a.out}/vocos_last.pth")
+                ck = {"G": G.state_dict(), "opt_g": opt_g.state_dict(),
+                      "opt_d": opt_d.state_dict(), "step": step, "init_channels": init_ch}
+                torch.save(ck, f"{a.out}/hifigan_step{step}.pth")
+                torch.save(ck, f"{a.out}/hifigan_last.pth")
                 print(f"  saved step {step}", flush=True)
             if step >= a.max_steps: break
     print("DONE", flush=True)

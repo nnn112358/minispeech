@@ -5,11 +5,10 @@ generate audio conditioned on the GT mel (differentiable reverse flow) and match
 it to that same GT mel / GT waveform, exactly the Vocos mel-loss principle.
 This directly optimises spectral fidelity, which pure flow-NLL does not.
 Init from a converged NLL checkpoint."""
-import sys, os, time, random, argparse
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import numpy as np, torch, torch.nn.functional as F
-import soundfile as sf
-from torch.utils.data import Dataset, DataLoader
+import os, sys, time, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import torch
+from torch.utils.data import DataLoader
 from sqzw.model import SqueezeWave, SqueezeWaveLoss
 from sqzw.features import PiperMelFeatures
 from sqzw.flow import WavSet, diff_infer, mrstft_loss
@@ -34,7 +33,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    feat = PiperMelFeatures(sample_rate=22050, n_fft=1024, hop_length=256, win_length=1024, n_mels=80).to(dev)
+    feat = PiperMelFeatures().to(dev)
     ck = torch.load(a.init_from, map_location=dev)
     cfg = ck["config"]
     model = SqueezeWave(**cfg).to(dev)

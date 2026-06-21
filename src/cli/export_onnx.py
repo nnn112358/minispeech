@@ -5,8 +5,8 @@ graph we take that noise as an INPUT `z` (1, n_audio_channel, l) instead of
 generating it inside (RandomNormal is unsupported by Pulsar2). Fixed cap of
 256 mel frames -> 65536 samples (2.972 s), matching the Vocos vocoder_fix.onnx
 so the two are directly comparable."""
-import sys, os, argparse
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import os, sys, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 from sqzw.model import SqueezeWave
 from sqzw.onnx_export import SqueezeWaveONNX, FRAMES

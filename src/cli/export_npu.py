@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Export GAN-finished SqueezeWave to SINGLE-FILE ONNX (Pulsar2-ready) and build
 the z (noise) calibration tar. mel calib reuses axmodel/dataset/calib_mel.tar."""
-import sys, os, tempfile, tarfile
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import os, sys, tempfile, tarfile
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch, onnx
 from sqzw.model import SqueezeWave
 from sqzw.onnx_export import SqueezeWaveONNX, FRAMES

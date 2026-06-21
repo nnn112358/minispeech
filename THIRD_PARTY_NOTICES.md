@@ -19,6 +19,12 @@ This project vendors / derives from the following open-source software.
   conditioning via `F.interpolate` (any mel-frame:audio-group ratio), and optional
   WaveNet-style dilation.
 
+## HiFi-GAN — `src/sqzw/hifigan_gen.py`
+- Architecture from HiFi-GAN (Kong et al., NeurIPS 2020); reference implementation
+  https://github.com/jik876/hifi-gan (MIT License). This file is an independent
+  re-implementation of the V1/V2 generator for comparison; the MPD/MRD
+  discriminators and losses used to train it are reused from the vendored Vocos.
+
 ## Piper — `src/sqzw/mel.py`
 - `spectrogram_torch` vendored from https://github.com/rhasspy/piper (MIT License),
   so the FastSpeech-output mel and the vocoder-input mel are bit-identical.

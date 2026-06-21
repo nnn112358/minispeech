@@ -2,8 +2,8 @@
 """Bake BN recalibration into a checkpoint in the STANDARD (pre-fusion) format,
 so the normal infer/export pipeline (build -> load_state_dict -> remove_weightnorm)
 works. Recalibrates BN running stats on the inference (reverse-flow) distribution."""
-import sys, argparse
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import os, sys, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch, torch.nn as nn
 from sqzw.model import SqueezeWave
 from sqzw.features import PiperMelFeatures
@@ -19,7 +19,7 @@ def main():
     ap.add_argument("--batches", type=int, default=60)
     a = ap.parse_args()
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    feat = PiperMelFeatures(sample_rate=22050, n_fft=1024, hop_length=256, win_length=1024, n_mels=80).to(dev)
+    feat = PiperMelFeatures().to(dev)
     ck = torch.load(a.ckpt, map_location=dev)
     m = SqueezeWave(**ck["config"]).to(dev); m.load_state_dict(ck["model"])
     nbn = 0

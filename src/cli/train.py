@@ -4,11 +4,10 @@ Trains the (patched) SqueezeWave flow on the SAME 80-dim log-mel the FastSpeech
 acoustic model emits (PiperMelFeatures: sr22050/n_fft1024/hop256/win1024,
 center=False, log-clamp 1e-5) so the FS->SqueezeWave handoff is exact.
 Pure max-likelihood flow loss (no GAN). fp32 for flow stability."""
-import sys, os, time, random, argparse, math
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import numpy as np, torch
-import soundfile as sf
-from torch.utils.data import Dataset, DataLoader
+import os, sys, time, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import torch
+from torch.utils.data import DataLoader
 from sqzw.model import SqueezeWave, SqueezeWaveLoss
 from sqzw.features import PiperMelFeatures
 from sqzw.flow import WavSet
@@ -63,7 +62,7 @@ def main():
     SQZW_CONFIG = make_config(nac, nc, a.n_flows, a.n_layers, a.n_early_every, a.n_early_size,
                               a.dilation_cycle or None)
 
-    feat = PiperMelFeatures(sample_rate=22050, n_fft=1024, hop_length=256, win_length=1024, n_mels=80).to(dev)
+    feat = PiperMelFeatures().to(dev)
     model = SqueezeWave(**SQZW_CONFIG).to(dev)
     criterion = SqueezeWaveLoss(a.sigma)
     npar = sum(p.numel() for p in model.parameters())

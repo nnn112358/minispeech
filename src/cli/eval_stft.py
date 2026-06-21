@@ -4,8 +4,8 @@ the mel-loss-trained Vocos). Compares each vocoder's output magnitude spectrum
 to ground truth. Magnitude-based (Spectral Convergence + Log-magnitude L1) so it
 is phase-invariant — correct for generative/flow vocoders. Sweeps SqueezeWave
 sigma. Lower is better."""
-import sys, os, argparse
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import os, sys, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
 from sqzw.model import SqueezeWave
@@ -40,7 +40,7 @@ def main():
     ap.add_argument("--sigmas", default="0.6,0.7,0.85,1.0")
     a = ap.parse_args()
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    feat = PiperMelFeatures(sample_rate=22050, n_fft=1024, hop_length=256, win_length=1024, n_mels=80).to(dev)
+    feat = PiperMelFeatures().to(dev)
 
     ck = torch.load(a.ckpt, map_location=dev)
     sq = SqueezeWave(**ck["config"]).to(dev); sq.load_state_dict(ck["model"])

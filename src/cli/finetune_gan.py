@@ -5,16 +5,16 @@ differentiable reverse pass (diff_infer) is the generator; discriminators are
 TRAINING-ONLY (zero inference params/cost). This adds the perceptual sharpness
 that reconstruction losses alone miss — the main lever for small configs.
 Init from an NLL (or aux) checkpoint; BN-recalibrate afterwards."""
-import sys, os, time, random, argparse
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import numpy as np, torch
-import soundfile as sf
+import os, sys, time, argparse
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import torch
 from torch.utils.data import DataLoader
 from sqzw.model import SqueezeWave, SqueezeWaveLoss
 from sqzw.features import PiperMelFeatures
 from vocos.discriminators import MultiPeriodDiscriminator, MultiResolutionDiscriminator
 from vocos.loss import DiscriminatorLoss, GeneratorLoss, FeatureMatchingLoss
 from sqzw.flow import diff_infer, mrstft_loss, WavSet
+from sqzw.gan_train import disc_loss, gen_adv_loss
 
 
 def main():
@@ -39,13 +39,13 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    feat = PiperMelFeatures(sample_rate=22050, n_fft=1024, hop_length=256, win_length=1024, n_mels=80).to(dev)
+    feat = PiperMelFeatures().to(dev)
     ck = torch.load(a.init_from, map_location=dev)
     cfg = ck["config"]
     G = SqueezeWave(**cfg).to(dev); G.load_state_dict(ck["model"])
     criterion = SqueezeWaveLoss(a.sigma)
     mpd = MultiPeriodDiscriminator().to(dev); mrd = MultiResolutionDiscriminator().to(dev)
-    dloss = DiscriminatorLoss(); gloss = GeneratorLoss(); fmloss = FeatureMatchingLoss()
+    dloss_fn = DiscriminatorLoss(); gloss_fn = GeneratorLoss(); fmloss_fn = FeatureMatchingLoss()
     print(f"GAN init from {a.init_from} (step {ck['step']}) cfg nac{cfg['n_audio_channel']}/"
           f"c{cfg['WN_config']['n_channels']} dil={cfg['WN_config'].get('dilation_cycle')} "
           f"w_adv={a.w_adv} w_fm={a.w_fm} w_mel={a.w_mel} w_stft={a.w_stft}", flush=True)
@@ -70,26 +70,17 @@ def main():
             audio = audio.to(dev)
             with torch.no_grad():
                 mel = feat(audio)
-            gen = diff_infer(G, mel, a.sigma)            # (B, L)
+            gen = diff_infer(G, mel, a.sigma)
             L = gen.shape[-1]; gt = audio[:, :L]
             # ---- discriminator ----
-            rmp, gmp, _, _ = mpd(y=gt, y_hat=gen.detach())
-            rmr, gmr, _, _ = mrd(y=gt, y_hat=gen.detach())
-            lmp, lmp_r, _ = dloss(disc_real_outputs=rmp, disc_generated_outputs=gmp)
-            lmr, lmr_r, _ = dloss(disc_real_outputs=rmr, disc_generated_outputs=gmr)
-            loss_d = lmp / len(lmp_r) + a.mrd_coeff * (lmr / len(lmr_r))
+            loss_d = disc_loss(mpd, mrd, dloss_fn, gt, gen.detach(), a.mrd_coeff)
             opt_d.zero_grad(); loss_d.backward(); opt_d.step()
             # ---- generator ----
             if a.w_nll > 0:
-                out = G((mel, audio)); loss_nll = criterion(out)   # extra fwd; skip when w_nll=0
+                out = G((mel, audio)); loss_nll = criterion(out)
             else:
                 loss_nll = torch.zeros((), device=dev)
-            _, gmp, frmp, fgmp = mpd(y=gt, y_hat=gen)
-            _, gmr, frmr, fgmr = mrd(y=gt, y_hat=gen)
-            lg_mp, l_mp = gloss(disc_outputs=gmp); lg_mr, l_mr = gloss(disc_outputs=gmr)
-            loss_adv = lg_mp / len(l_mp) + a.mrd_coeff * (lg_mr / len(l_mr))
-            loss_fm = fmloss(fmap_r=frmp, fmap_g=fgmp) / len(frmp) \
-                      + a.mrd_coeff * (fmloss(fmap_r=frmr, fmap_g=fgmr) / len(frmr))
+            loss_adv, loss_fm = gen_adv_loss(mpd, mrd, gloss_fn, fmloss_fn, gt, gen, a.mrd_coeff)
             mel_gen = feat(gen); Lm = min(mel.size(2), mel_gen.size(2))
             loss_mel = (mel[:, :, :Lm] - mel_gen[:, :, :Lm]).abs().mean()
             sc, lm = mrstft_loss(gt, gen, dev); loss_stft = sc + lm
