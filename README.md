@@ -26,18 +26,67 @@
 
 音響モデルとボコーダの間で受け渡すメルスペクトログラムの形式は完全に一致させています。
 
+## FastSpeech2 lightning とは？
+
+テキスト (の音素列) からメルスペクトログラムを生成する音響モデルです。
+FastSpeech 2 をベースに、軽量化と自己アライメント機能の追加を行っています。
+
+- 畳み込みブロック (depthwise-separable) のみで構成。self-attention なし
+- 継続長予測器 (Duration Predictor) のみ搭載。pitch/energy 予測器なし
+- **自己アライメント** (`--learn-alignment`): テキストと音声の対応を学習中に
+  自動で獲得。外部ツール (VITS, MFA) が不要になる
+
+関連資料:
+- 論文: [FastSpeech 2 (Ren et al., 2020)](https://arxiv.org/abs/2006.04558)
+- 自己アライメント手法: [One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447)
+- 読み変換: [OpenJTalk](https://open-jtalk.sp.nitech.ac.jp/)
+
 ## SqueezeWave とは？
 
-音声波形を生成するモデル (ボコーダ) にはいくつかの方式があります:
+メルスペクトログラムから音声波形を生成するボコーダです。
+WaveGlow (正規化フロー) を軽量化したモデルで、全サンプルを並列に生成します。
+
+- チャネル数・フロー段数・レイヤ数を CLI フラグで自由に変更可能
+- 通常の学習だけでは品質が不足するため、本リポの4段学習で改善する
+
+関連資料:
+- 論文: [SqueezeWave (Zhai et al., 2020)](https://arxiv.org/abs/2001.05685)
+- 原型: [WaveGlow (Prenger et al., 2018)](https://arxiv.org/abs/1811.00002)
+- 参考実装: [tianrengao/SqueezeWave](https://github.com/tianrengao/SqueezeWave)、[NVIDIA/waveglow](https://github.com/NVIDIA/waveglow)
+
+## Vocos とは？
+
+ConvNeXt ブロックと iSTFT (逆短時間フーリエ変換) を組み合わせたボコーダです。
+周波数領域で振幅と位相を予測し、iSTFT で波形に変換します。
+
+- 高品質で、マルチスレッド CPU で特に速い
+- 本リポでは SqueezeWave との比較ベースラインとして使用
+- 判別器 (MPD/MRD) は全ボコーダの GAN 学習で共有
+
+関連資料:
+- 論文: [Vocos (Siuzdak, 2023)](https://arxiv.org/abs/2306.00814)
+- リポジトリ: [gemelo-ai/vocos](https://github.com/gemelo-ai/vocos)
+
+## HiFi-GAN とは？
+
+転置畳み込みによるアップサンプリングと残差ブロックで波形を生成するボコーダです。
+VITS など多くの TTS システムの標準ボコーダとして広く使われています。
+
+- 本リポでは piper (VITS ベースの TTS) の構成 (ResBlock2, 256ch) を採用
+- SqueezeWave・Vocos との比較ベースラインとして使用
+
+関連資料:
+- 論文: [HiFi-GAN (Kong et al., 2020)](https://arxiv.org/abs/2010.05646)
+- リポジトリ: [jik876/hifi-gan](https://github.com/jik876/hifi-gan)
+- piper (VITS TTS): [rhasspy/piper](https://github.com/rhasspy/piper)
+
+## ボコーダ比較
 
 | ボコーダ | 方式 | パラメータ数 | 特徴 |
 |---|---|---|---|
 | HiFi-GAN | GAN (転置畳み込み) | 1.46M | 軽量、VITS TTS 標準構成 |
 | Vocos | GAN (ConvNeXt + iSTFT) | 13.5M | 高品質、マルチスレッドに強い |
 | **SqueezeWave** | 正規化フロー | 1.35M〜7.9M | 小型・高速・構成の自由度が高い |
-
-SqueezeWave は通常の学習だけでは Vocos や HiFi-GAN に品質で劣りますが、
-本リポの4段階の学習手順で同等の品質まで引き上げられます。
 
 ## 4段学習の手順
 
@@ -52,14 +101,8 @@ SqueezeWave の品質を段階的に改善します (`scripts/run_gan_finish.sh`
 4. **BN 再キャリブ** (`cli/bake_bnrecal.py`) — モデル内部の統計値を推論時の
    分布に合わせて再計算し、学習時と推論時のずれを解消。
 
-## 比較ボコーダ
-
-以下の2つも同じデータ・同じ判別器で学習し、SqueezeWave と公正に比較できます:
-
-- **HiFi-GAN** (piper 構成: 1.46M パラメータ) — `cli/hifigan_train.py`
-- **Vocos** (ConvNeXt + iSTFT: 13.5M パラメータ) — `cli/vocos_train.py`
-
-3種のボコーダで GAN の損失計算 (`sqzw/gan_train.py`) と評価ループ (`sqzw/eval_vocoder.py`) を共有しています。
+3種のボコーダは同じデータ・同じ判別器で学習し、GAN の損失計算 (`sqzw/gan_train.py`) と
+評価ループ (`sqzw/eval_vocoder.py`) を共有しています。
 
 ## リポジトリ構成
 
