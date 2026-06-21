@@ -1,0 +1,44 @@
+{
+  "model_type": "ONNX",
+  "npu_mode": "NPU3",
+  "target_hardware": "AX650",
+  "input": "model/vocoder_fix.onnx",
+  "output_dir": "output_npu3",
+  "output_name": "vocoder_AX650_u16_npu3.axmodel",
+  "onnx_opt": {
+    "model_check": true
+  },
+  "quant": {
+    "input_configs": [
+      {
+        "tensor_name": "mel",
+        "calibration_dataset": "dataset/calib_mel.tar",
+        "calibration_size": 32,
+        "calibration_mean": [
+          0.0
+        ],
+        "calibration_std": [
+          1.0
+        ],
+        "calibration_format": "Numpy"
+      }
+    ],
+    "layer_configs": [
+      {
+        "start_tensor_names": [
+          "DEFAULT"
+        ],
+        "end_tensor_names": [
+          "DEFAULT"
+        ],
+        "data_type": "U16"
+      }
+    ],
+    "calibration_method": "MinMax",
+    "precision_analysis": false
+  },
+  "compiler": {
+    "check": 0,
+    "npu_perf": true
+  }
+}
