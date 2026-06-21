@@ -25,9 +25,12 @@ This project vendors / derives from the following open-source software.
   re-implementation of the V1/V2 generator for comparison; the MPD/MRD
   discriminators and losses used to train it are reused from the vendored Vocos.
 
-## Piper — `src/sqzw/mel.py`
+## Piper — `src/sqzw/mel.py`, `src/sqzw/monotonic_align.py`
 - `spectrogram_torch` vendored from https://github.com/rhasspy/piper (MIT License),
   so the MiniSpeech-output mel and the vocoder-input mel are bit-identical.
+- `monotonic_align.py` — Monotonic Alignment Search (MAS) の動的計画法。
+  Glow-TTS / VITS の monotonic_align (MIT License) を piper 経由で vendored。
+  自己アライメント (`alignment.py`) から呼び出し、hard な継続長を抽出する。
 
 ## Starting point
 - The SqueezeWave integration was bootstrapped from
