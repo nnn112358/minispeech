@@ -74,7 +74,7 @@ CTC 損失で単調性を誘導し、MAS で hard な継続長を抽出します
 
 - Conv ブロック設計: [ConvNeXt (Liu et al., 2022)](https://arxiv.org/abs/2201.03545)
 - 自己アライメント: [FastPitch (Łańcucki, 2021)](https://arxiv.org/abs/2006.06873)、[One TTS Alignment (Badlani et al., 2021)](https://arxiv.org/abs/2108.10447)
-- 比較対象: [FastSpeech (Ren et al., 2019)](https://arxiv.org/abs/1905.09263)、[FastSpeech 2 (Ren et al., 2020)](https://arxiv.org/abs/2006.04558)
+- 比較対象 (表中): [piper (VITS)](https://github.com/rhasspy/piper)
 - 読み変換: [OpenJTalk](https://open-jtalk.sp.nitech.ac.jp/)
 
 ## SqueezeWave とは？
