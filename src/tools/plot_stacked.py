@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stacked bar: 2-stage TTS total inference time = FastSpeech encoder (fs_enc+
+"""Stacked bar: 2-stage TTS total inference time = MiniSpeech encoder (fs_enc+
 fs_dec, constant) + vocoder (varies per config). ONNX Runtime CPU, 1 thread,
 256-frame / 2.972s. Annotates the parameter changed and the SpecConv quality."""
 import sys, time, tempfile

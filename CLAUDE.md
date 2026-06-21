@@ -24,8 +24,8 @@ python src/cli/finetune_gan.py --ckpt checkpoints/run1/aux_last.pth --w-mel 45
 python src/cli/bake_bnrecal.py --ckpt checkpoints/run1/gan_last.pth
 
 # MiniSpeech acoustic model
-python src/cli/train_fastspeech.py --manifest fs_data/tyc/fs_manifest.json --learn-alignment
-python src/cli/train_fastspeech.py --manifest fs_data/tyc/fs_manifest.json  # with precomputed durations
+python src/cli/train_minispeech.py --manifest fs_data/tyc/fs_manifest.json --learn-alignment
+python src/cli/train_minispeech.py --manifest fs_data/tyc/fs_manifest.json  # with precomputed durations
 
 # Inference & evaluation
 python src/cli/infer.py --ckpt checkpoints/<run>/sqzwgan_bnrecal.pth --n 4 --sigma 0.7
@@ -56,7 +56,7 @@ python src/tools/bench_onnx.py         # single-model ONNX latency
 
 - **SqueezeWave** (`sqzw/model.py`): WaveGlow-derived normalizing flow. All architecture params (n_audio_channel, n_flows, n_layers, etc.) are CLI flags, not hardcoded.
 - **Quality recipe**: NLL pre-train → aux fine-tune (differentiable reverse flow + mel-L1 + multi-res STFT) → GAN fine-tune (Vocos MPD/MRD, `w_mel=45` anchor) → BN recalibration. Discriminators are training-only (zero inference cost).
-- **MiniSpeech** (`cli/train_fastspeech.py`): minimal non-AR acoustic model (depthwise-separable conv blocks, duration predictor only — no pitch/energy). Supports two alignment modes: `--learn-alignment` (self-aligning via AlignmentEncoder + CTC + MAS, no external dependency) or precomputed durations in manifest.
+- **MiniSpeech** (`cli/train_minispeech.py`): minimal non-AR acoustic model (depthwise-separable conv blocks, duration predictor only — no pitch/energy). Supports two alignment modes: `--learn-alignment` (self-aligning via AlignmentEncoder + CTC + MAS, no external dependency) or precomputed durations in manifest.
 - **Self-alignment** (`sqzw/alignment.py`, `sqzw/monotonic_align.py`): cosine-similarity attention with learnable scale + beta-binomial diagonal prior + forward-sum (CTC) loss. MAS extracts hard durations. Aligner weights are stripped at save time (inference uses only the duration predictor).
 - **HiFi-GAN** (`sqzw/hifigan_gen.py`): defaults to piper config (ResBlock2, 256ch, upsample 8×8×4). Used as a comparison baseline, not the primary vocoder.
 - **PiperMelFeatures** (`sqzw/features.py`): the shared mel contract. Any change here breaks compatibility between MiniSpeech and all vocoders.

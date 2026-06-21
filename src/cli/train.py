@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Standalone SqueezeWave vocoder trainer for the JSUT 2-stage TTS.
-Trains the (patched) SqueezeWave flow on the SAME 80-dim log-mel the FastSpeech
+Trains the (patched) SqueezeWave flow on the SAME 80-dim log-mel the MiniSpeech
 acoustic model emits (PiperMelFeatures: sr22050/n_fft1024/hop256/win1024,
 center=False, log-clamp 1e-5) so the FS->SqueezeWave handoff is exact.
 Pure max-likelihood flow loss (no GAN). fp32 for flow stability."""

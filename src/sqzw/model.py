@@ -5,7 +5,7 @@
 #       size=audio_time) so the model accepts ANY mel-frame : audio-group ratio.
 #       This lets us train/infer on PiperMelFeatures mel (center=False, 61 frames
 #       per 16384-sample segment) instead of the original center=True 64-frame mel,
-#       keeping FastSpeech-output mel and SqueezeWave-input mel identical.
+#       keeping MiniSpeech-output mel and SqueezeWave-input mel identical.
 # Original NVIDIA BSD-3 copyright retained below.
 #
 # *****************************************************************************

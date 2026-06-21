@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Full 2-stage TTS: phoneme_ids -> FastSpeech mel -> SqueezeWave audio.
-The speaker/voice comes from the FastSpeech checkpoint (the vocoder is mostly
+"""Full 2-stage TTS: phoneme_ids -> MiniSpeech mel -> vocoder audio.
+The speaker/voice comes from the MiniSpeech checkpoint (the vocoder is mostly
 speaker-agnostic). Phonemes come from a manifest entry or --phonemes; text->phoneme
-(OpenJTalk g2p) is a separate piper-side step, not bundled here."""
+(OpenJTalk g2p) is a separate step, not bundled here."""
 import os, sys, json, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
 from cli.infer import load_model
-from cli.train_fastspeech import FastSpeech
+from cli.train_minispeech import MiniSpeech
 
 SR = 22050
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fs-ckpt", default="fs/tyc_fs/fs_300.pth", help="FastSpeech (defines the voice)")
+    ap.add_argument("--fs-ckpt", default="fs/tyc_fs/fs_300.pth", help="MiniSpeech checkpoint (defines the voice)")
     ap.add_argument("--voc-ckpt", default="checkpoints/tyc_c64_gan/sqzwgan_bnrecal.pth")
     ap.add_argument("--manifest", default="fs_data/tyc/fs_manifest.json", help="phoneme_ids source")
     ap.add_argument("--idx", type=int, default=0, help="utterance index in the manifest")
@@ -27,7 +27,7 @@ def main():
 
     fck = torch.load(a.fs_ckpt, map_location=dev)
     n_sym = fck["model"]["emb.weight"].shape[0]
-    fs = FastSpeech(n_sym=n_sym).to(dev); fs.load_state_dict(fck["model"]); fs.eval()
+    fs = MiniSpeech(n_sym=n_sym).to(dev); fs.load_state_dict(fck["model"]); fs.eval()
 
     # vocoder: auto-detect SqueezeWave ("model"+"config") / Vocos ("G") / HiFi-GAN ("G"+"init_channels")
     vck = torch.load(a.voc_ckpt, map_location=dev)

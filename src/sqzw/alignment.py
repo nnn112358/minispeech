@@ -1,5 +1,5 @@
 """Self-aligning components for non-autoregressive TTS (FastPitch / RAD-TTS /
-"One TTS Alignment To Rule Them All"). The FastSpeech learns the phoneme<->mel
+"One TTS Alignment To Rule Them All"). MiniSpeech learns the phoneme<->mel
 alignment DURING training (no external aligner): a small AlignmentEncoder gives a
 soft alignment, a forward-sum (CTC) loss drives it to be monotonic, and MAS
 extracts hard durations to supervise the duration predictor. All training-only —

@@ -10,7 +10,7 @@
 ```
 
 - 共通 mel: `PiperMelFeatures` (sr22050 / n_fft1024 / hop256 / win1024, center=False, log-clamp 1e-5)。音響モデルの出力とボコーダの入力が完全一致。
-- 音響モデル: MiniSpeech (非AR, DurationPredictor のみ, pitch/energy なし)。`src/cli/train_fastspeech.py`。
+- 音響モデル: MiniSpeech (非AR, DurationPredictor のみ, pitch/energy なし)。`src/cli/train_minispeech.py`。
 - ボコーダ: SqueezeWave (WaveGlow 系の正規化フロー, 非AR・並列)。`src/sqzw/model.py`。
 
 ## 設計判断 (なぜ SqueezeWave)

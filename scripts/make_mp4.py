@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an MP4 demo from the 2-stage (FastSpeech+Vocos) synthesized audio:
+"""Build an MP4 demo from the 2-stage (MiniSpeech+Vocos) synthesized audio:
 concat 4 utterances (gaps), render a waveform + mel-spectrogram background with
 Japanese text labels, write combined.wav + bg.png. ffmpeg adds a moving playhead."""
 import numpy as np, librosa
@@ -70,7 +70,7 @@ for (s0, s1, idx, txt) in spans:
     axs.text((s0+s1)/2, 88, short, color="#e8e8e8", fontsize=8.5,
              ha="center", va="bottom", fontproperties=jp)
 
-fig.text(0.06, 0.94, "2-stage TTS  —  FastSpeech (non-AR)  +  Vocos vocoder",
+fig.text(0.06, 0.94, "2-stage TTS  —  MiniSpeech (non-AR)  +  Vocos vocoder",
          color="#ffffff", fontsize=15, fontproperties=jp, fontweight="bold")
 fig.text(0.06, 0.905, "JSUT 22.05 kHz / 80-mel  ·  4 utterances  ·  AX650N NPU3 U16: ~10.7 ms/utt (277× realtime)",
          color="#9fb4c8", fontsize=9.5, fontproperties=jp)

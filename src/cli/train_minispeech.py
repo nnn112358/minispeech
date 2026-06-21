@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compact non-AR FastSpeech-style acoustic model: OpenJTalk phoneme ids -> 80-mel
-(22050/hop256). Edge-light: conv-based FFT blocks, depthwise-separable, no
-self-attention. A duration predictor is trained so inference needs no alignment.
+"""MiniSpeech: compact non-AR acoustic model. OpenJTalk phoneme ids -> 80-mel
+(22050/hop256). Conv-based blocks (depthwise-separable), no self-attention.
+A duration predictor is trained so inference needs no alignment.
 
 Two ways to get the training durations:
   --learn-alignment : SELF-ALIGNING (default-recommended). Learns the phoneme<->mel
@@ -69,7 +69,7 @@ def length_regulate(x, durations, max_len):  # x:(B,Tp,d), durations:(B,Tp) long
     return torch.stack(outs, 0)
 
 
-class FastSpeech(nn.Module):
+class MiniSpeech(nn.Module):
     def __init__(self, n_sym, d=256, n_enc=4, n_dec=4, n_mel=80, learn_alignment=False):
         super().__init__()
         self.emb = nn.Embedding(n_sym, d, padding_idx=0)
@@ -136,7 +136,7 @@ def main():
     print(f"utts={len(items)} n_sym={n_sym} learn_alignment={a.learn_alignment}", flush=True)
     dl = DataLoader(FSSet(a.manifest), batch_size=a.batch_size, shuffle=True, collate_fn=collate, num_workers=0, drop_last=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = FastSpeech(n_sym, learn_alignment=a.learn_alignment).to(dev)
+    model = MiniSpeech(n_sym, learn_alignment=a.learn_alignment).to(dev)
     if a.resume:
         model.load_state_dict(torch.load(a.resume, map_location="cpu")["model"], strict=False); print(f"resumed {a.resume}", flush=True)
     print(f"params={sum(p.numel() for p in model.parameters())/1e6:.2f}M device={dev}", flush=True)
