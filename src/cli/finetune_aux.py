@@ -9,9 +9,10 @@ import os, sys, time, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 from torch.utils.data import DataLoader
-from sqzw.model import SqueezeWave, SqueezeWaveLoss
-from sqzw.features import PiperMelFeatures
-from sqzw.flow import WavSet, diff_infer, mrstft_loss
+from decoders.squeezewave.model import SqueezeWave, SqueezeWaveLoss
+from common.features import PiperMelFeatures
+from common.dataset import WavSet
+from decoders.squeezewave.flow import diff_infer, mrstft_loss
 
 
 def main():
@@ -49,12 +50,12 @@ def main():
         model.load_state_dict(rk["model"]); opt.load_state_dict(rk["opt"]); step0 = rk["step"]
         print(f"resumed {a.resume} @ step {step0}", flush=True)
     dl = DataLoader(WavSet(a.filelist, a.num_samples), batch_size=a.batch_size, shuffle=True,
-                    num_workers=4, drop_last=True, persistent_workers=True)
+                    num_workers=4, drop_last=True, persistent_workers=True, pin_memory=True)
     step = step0; t0 = time.time(); model.train()
     rn = rm = rs = None
     while step < a.max_steps:
         for audio in dl:
-            audio = audio.to(dev)
+            audio = audio.to(dev, non_blocking=True)
             with torch.no_grad():
                 mel = feat(audio)
             # flow NLL

@@ -8,9 +8,9 @@ import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
-from sqzw.model import SqueezeWave
-from sqzw.vocos_gen import Generator
-from sqzw.features import PiperMelFeatures
+from decoders.squeezewave.model import SqueezeWave
+from decoders.vocos.generator import Generator
+from common.features import PiperMelFeatures
 
 SR = 22050
 RES = [(512, 128, 512), (1024, 256, 1024), (2048, 512, 2048)]  # (n_fft, hop, win)

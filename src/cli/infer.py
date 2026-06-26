@@ -8,9 +8,9 @@ import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
-from sqzw.model import SqueezeWave
-from sqzw.features import PiperMelFeatures
-from sqzw.eval_vocoder import eval_copysynthesis
+from decoders.squeezewave.model import SqueezeWave
+from common.features import PiperMelFeatures
+from common.eval_vocoder import eval_copysynthesis
 
 SR = 22050
 

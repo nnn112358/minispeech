@@ -6,8 +6,8 @@ HiFi-GAN is exported with random weights (no training needed) just to time it.
 import os, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
-from sqzw.hifigan_gen import HiFiGAN
-from sqzw.bench import bench
+from decoders.hifigan.generator import HiFiGAN
+from decoders.squeezewave.bench import bench
 
 FRAMES = 256
 SR = 22050
@@ -26,8 +26,8 @@ def export_hifigan(cfg, path):
 
 
 def export_squeezewave(ckpt, path):
-    from sqzw.model import SqueezeWave
-    from sqzw.onnx_export import SqueezeWaveONNX
+    from decoders.squeezewave.model import SqueezeWave
+    from decoders.squeezewave.onnx_export import SqueezeWaveONNX
     ck = torch.load(ckpt, map_location="cpu"); cfg = ck["config"]
     model = SqueezeWave(**cfg); model.load_state_dict(ck["model"])
     model = SqueezeWave.remove_weightnorm(model).eval()

@@ -5,9 +5,10 @@ works. Recalibrates BN running stats on the inference (reverse-flow) distributio
 import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch, torch.nn as nn
-from sqzw.model import SqueezeWave
-from sqzw.features import PiperMelFeatures
-from sqzw.flow import diff_infer, WavSet
+from decoders.squeezewave.model import SqueezeWave
+from common.features import PiperMelFeatures
+from common.dataset import WavSet
+from decoders.squeezewave.flow import diff_infer
 from torch.utils.data import DataLoader
 
 

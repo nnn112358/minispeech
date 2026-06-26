@@ -3,8 +3,8 @@
 import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
-from sqzw.vocos_gen import Generator
-from sqzw.eval_vocoder import eval_copysynthesis
+from decoders.vocos.generator import Generator
+from common.eval_vocoder import eval_copysynthesis
 
 
 def main():

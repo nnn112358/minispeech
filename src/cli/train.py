@@ -8,9 +8,9 @@ import os, sys, time, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 from torch.utils.data import DataLoader
-from sqzw.model import SqueezeWave, SqueezeWaveLoss
-from sqzw.features import PiperMelFeatures
-from sqzw.flow import WavSet
+from decoders.squeezewave.model import SqueezeWave, SqueezeWaveLoss
+from common.features import PiperMelFeatures
+from common.dataset import WavSet
 
 # Preset (n_audio_channel, WN n_channels) shorthands. a256=L64 (l=256, ~1.7x
 # faster than a128/l=512); c=WN width. Every arch param is also a CLI flag below,
@@ -77,11 +77,11 @@ def main():
         print(f"resumed {a.resume} @ step {step}", flush=True)
 
     dl = DataLoader(WavSet(a.filelist, a.num_samples), batch_size=a.batch_size, shuffle=True,
-                    num_workers=4, drop_last=True, persistent_workers=True)
+                    num_workers=4, drop_last=True, persistent_workers=True, pin_memory=True)
     t0 = time.time(); run = None; model.train()
     while step < a.max_steps:
         for audio in dl:
-            audio = audio.to(dev)                       # (B, T)
+            audio = audio.to(dev, non_blocking=True)      # (B, T)
             with torch.no_grad():
                 mel = feat(audio)                       # (B, 80, frames)
             out = model((mel, audio))

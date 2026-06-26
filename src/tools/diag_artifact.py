@@ -7,8 +7,8 @@ import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspa
 import numpy as np, torch, librosa, soundfile as sf
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sqzw.model import SqueezeWave
-from sqzw.features import PiperMelFeatures
+from decoders.squeezewave.model import SqueezeWave
+from common.features import PiperMelFeatures
 
 SR = 22050; GROUP = 256; FRATE = SR / GROUP  # 86.1 Hz
 VAL = [l for l in open("data/filelist_val.txt").read().splitlines() if l.strip()]

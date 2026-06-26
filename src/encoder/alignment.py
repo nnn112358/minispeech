@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sqzw.monotonic_align import maximum_path
+from encoder.monotonic_align import maximum_path
 
 _PRIOR_CACHE = {}
 
@@ -49,18 +49,16 @@ class AlignmentEncoder(nn.Module):
             nn.Conv1d(n_mel * 2, n_att, 1))
 
     def forward(self, mel, text, key_mask=None, attn_prior=None, prior_weight=1.0):
-        # mel: (B, n_mel, T_mel)   text: (B, n_text, T_phon)   key_mask: (B, T_phon) True=pad
-        # attn_prior: (B, T_mel, T_phon) beta-binomial diagonal prior (early-training guide)
-        q = F.normalize(self.query_proj(mel), dim=1)            # (B, n_att, T_mel) unit per frame
-        k = F.normalize(self.key_proj(text), dim=1)            # (B, n_att, T_phon) unit per phoneme
-        qk = torch.bmm(q.transpose(1, 2), k)                    # cosine sim (B, T_mel, T_phon) in [-1,1]
-        score = (self.scale * qk).unsqueeze(1)                  # (B, 1, T_mel, T_phon)
+        q = F.normalize(self.query_proj(mel), dim=1)
+        k = F.normalize(self.key_proj(text), dim=1)
+        qk = torch.bmm(q.transpose(1, 2), k)
+        score = (self.scale * qk).unsqueeze(1)
         if attn_prior is not None and prior_weight > 0:
             score = score + prior_weight * torch.log(attn_prior[:, None] + 1e-8)
         attn_logprob = score.clone()
         if key_mask is not None:
             score = score.masked_fill(key_mask[:, None, None, :], -float("inf"))
-        attn_soft = F.softmax(score, dim=3)                     # over phonemes
+        attn_soft = F.softmax(score, dim=3)
         return attn_soft, attn_logprob
 
 
@@ -72,12 +70,11 @@ class ForwardSumLoss(nn.Module):
         self.ctc = nn.CTCLoss(zero_infinity=True)
 
     def forward(self, attn_logprob, phon_lens, mel_lens):
-        # attn_logprob: (B, 1, T_mel, T_phon)
-        a = F.pad(attn_logprob, (1, 0), value=self.blank)       # blank class at index 0
+        a = F.pad(attn_logprob, (1, 0), value=self.blank)
         total = 0.0
         for b in range(a.shape[0]):
-            tgt = torch.arange(1, phon_lens[b] + 1, device=a.device).unsqueeze(0)   # (1, T_phon)
-            cur = a[b, :, : mel_lens[b], : phon_lens[b] + 1]                          # (1, T_mel, T_phon+1)
+            tgt = torch.arange(1, phon_lens[b] + 1, device=a.device).unsqueeze(0)
+            cur = a[b, :, : mel_lens[b], : phon_lens[b] + 1]
             cur = F.log_softmax(cur, dim=-1)
             total = total + self.ctc(cur.permute(1, 0, 2), tgt,
                                      mel_lens[b:b + 1], phon_lens[b:b + 1])
@@ -91,9 +88,9 @@ def hard_durations(attn_soft, phon_lens, mel_lens):
     mask = torch.zeros(B, T_mel, T_phon, device=dev)
     for b in range(B):
         mask[b, : mel_lens[b], : phon_lens[b]] = 1.0
-    neg_cent = torch.log(attn_soft.squeeze(1).clamp_min(1e-8))   # (B, T_mel, T_phon)
-    path = maximum_path(neg_cent, mask)                          # (B, T_mel, T_phon)
-    return path.sum(1), path                                    # durations (B, T_phon)
+    neg_cent = torch.log(attn_soft.squeeze(1).clamp_min(1e-8))
+    path = maximum_path(neg_cent, mask)
+    return path.sum(1), path
 
 
 def bin_loss(attn_soft, attn_hard):

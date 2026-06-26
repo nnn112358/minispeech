@@ -4,75 +4,139 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Two-stage non-autoregressive Japanese TTS:
-**OpenJTalk g2p → MiniSpeech (text→mel) → SqueezeWave vocoder (mel→audio)**
+Two-stage non-autoregressive Japanese TTS (FastSpeech 系):
+**OpenJTalk g2p → MiniSpeech (text→mel) → Vocoder (mel→audio)**
 
+Vocoder は Vocos / SqueezeWave / HiFi-GAN / MB-iSTFT から選択可能。
 All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). MiniSpeech output and vocoder input are bit-identical by design.
 
 ## Running scripts
 
-All scripts assume **repo root** as cwd. CLI scripts auto-add `src/` to sys.path.
+All scripts assume **repo root** (`/home/nnn/mini-jtts`) as cwd. CLI scripts auto-add `src/` to sys.path.
+Python venv: `~/.venvs/piper_ft/bin/python`
 
 ```bash
-# Training (full quality recipe)
-bash scripts/run_gan_finish.sh        # NLL → aux → GAN → BN-recal → eval
+# --- 音響モデル (MiniSpeech) ---
+# 自己アライメントで学習:
+python src/cli/train_minispeech.py --manifest fs_data/fs_manifest.json --learn-alignment --epochs 500
 
-# Individual stages
-python src/cli/train.py --filelist data/filelist_train.txt --out checkpoints/run1
-python src/cli/finetune_aux.py --ckpt checkpoints/run1/last.pth
-python src/cli/finetune_gan.py --ckpt checkpoints/run1/aux_last.pth --w-mel 45
-python src/cli/bake_bnrecal.py --ckpt checkpoints/run1/gan_last.pth
+# precomputed durations で学習 (dim/層数指定可):
+python src/cli/train_minispeech.py --manifest fs_data/fs_manifest.json --dim 192 --n-enc 4 --n-dec 4 --epochs 2000 --cosine
 
-# MiniSpeech acoustic model
-python src/cli/train_minispeech.py --manifest fs_data/tyc/fs_manifest.json --learn-alignment
-python src/cli/train_minispeech.py --manifest fs_data/tyc/fs_manifest.json  # with precomputed durations
+# --- ボコーダ ---
+# SqueezeWave 4段学習を一括実行:
+bash scripts/run_gan_finish.sh
 
-# Inference & evaluation
+# Vocos (lite構成指定可):
+python src/cli/vocos_train.py --filelist data/filelist_train.txt --dim 256 --num-layers 4 --n-fft 512
+
+# MB-iSTFT:
+python src/cli/mbistft_train.py --filelist data/filelist_train.txt --out checkpoints/mbistft_jsut
+
+# HiFi-GAN:
+python src/cli/hifigan_train.py --filelist data/filelist_train.txt --out checkpoints/hifigan_jsut
+
+# --- 推論 ---
+# テキストから音声を生成 (encoderのconfig自動検出):
+python src/cli/synth.py --fs-ckpt fs/enc_d192/fs_2000.pth --voc-ckpt checkpoints/vocos_lite_a/vocos_last.pth --text "おはようございます"
+
+# ボコーダ単体の評価:
 python src/cli/infer.py --ckpt checkpoints/<run>/sqzwgan_bnrecal.pth --n 4 --sigma 0.7
-python src/cli/eval_stft.py --ckpt checkpoints/<run>/sqzwgan_bnrecal.pth
-python src/cli/synth.py --fs-ckpt fs/tyc_fs/fs_300.pth --voc-ckpt checkpoints/<run>/sqzwgan_bnrecal.pth
 
-# ONNX export & NPU
+# --- ONNX ---
 python src/cli/export_onnx.py
-python src/cli/export_npu.py
-bash scripts/run_npu_bench.sh
-
-# Benchmarks & tools
-python src/tools/bench_vocoders.py     # compare vocoder ONNX speed
-python src/tools/bench_onnx.py         # single-model ONNX latency
+python src/tools/bench_vocoders.py
 ```
 
 ## Code layout
 
-- `src/sqzw/` — core library (model, features, flow ops, ONNX export, alignment, benchmarking, `gan_train.py` shared GAN D/G loss, `eval_vocoder.py` shared eval loop)
+- `src/common/` — shared library (features, mel, modules, dataset, GAN loss, eval loop)
+- `src/encoder/` — MiniSpeech acoustic model, alignment, MAS
+- `src/decoders/squeezewave/` — SqueezeWave (normalizing flow)
+- `src/decoders/hifigan/` — HiFi-GAN (transposed conv)
+- `src/decoders/vocos/` — Vocos (ConvNeXt + iSTFT)
+- `src/decoders/mb_istft/` — MB-iSTFT (multi-band iSTFT + PQMF)
 - `src/cli/` — training and inference entry points (each is a standalone script with argparse)
 - `src/tools/` — dev-only analysis, plotting, sweeps, diagnostics
 - `src/vocos/` — vendored Vocos (trimmed, MIT); discriminators used for GAN training only
 - `scripts/` — bash pipelines that compose CLI scripts into full recipes
 - `npu/` — Pulsar2 config templates (build artifacts gitignored)
 - `_unused/`, `_legacy/` — archived experiments (not part of active codebase)
+- `fs/` — MiniSpeech チェックポイント (`enc_d{96,128,192,256}/`)
+- `checkpoints/` — Vocoder チェックポイント (`vocos_lite_{a,b,c}/`, `vocos_jsut/`, etc.)
 
 ## Key architecture details
 
-- **SqueezeWave** (`sqzw/model.py`): WaveGlow-derived normalizing flow. All architecture params (n_audio_channel, n_flows, n_layers, etc.) are CLI flags, not hardcoded.
-- **Quality recipe**: NLL pre-train → aux fine-tune (differentiable reverse flow + mel-L1 + multi-res STFT) → GAN fine-tune (Vocos MPD/MRD, `w_mel=45` anchor) → BN recalibration. Discriminators are training-only (zero inference cost).
-- **MiniSpeech** (`cli/train_minispeech.py`): minimal non-AR acoustic model (depthwise-separable conv blocks, duration predictor only — no pitch/energy). Supports two alignment modes: `--learn-alignment` (self-aligning via AlignmentEncoder + CTC + MAS, no external dependency) or precomputed durations in manifest.
-- **Self-alignment** (`sqzw/alignment.py`, `sqzw/monotonic_align.py`): cosine-similarity attention with learnable scale + beta-binomial diagonal prior + forward-sum (CTC) loss. MAS extracts hard durations. Aligner weights are stripped at save time (inference uses only the duration predictor).
-- **HiFi-GAN** (`sqzw/hifigan_gen.py`): defaults to piper config (ResBlock2, 256ch, upsample 8×8×4). Used as a comparison baseline, not the primary vocoder.
-- **PiperMelFeatures** (`sqzw/features.py`): the shared mel contract. Any change here breaks compatibility between MiniSpeech and all vocoders.
+### MiniSpeech (encoder)
+
+FastSpeech 系の軽量音響モデル。Self-Attention を全て depthwise-separable Conv に置き換え。
+
+- **ConvBlock**: Depthwise Conv (MobileNet) + Pointwise Conv + LayerNorm + FFN (Transformer) + 残差接続
+- **Duration**: `round → long` で整数化 → `repeat_interleave` で展開。Duration は一本化されており VITS の float/ceil 二重定義バグは構造的に発生しない
+- **dim 構成**: `--dim`, `--n-enc`, `--n-dec` で指定。checkpoint に `config` dict として保存され、synth.py が自動検出
+- **Self-Alignment** (`--learn-alignment`): cosine-similarity attention + beta-binomial prior + forward-sum (CTC) loss + MAS。Aligner weights は save 時に strip
+- checkpoint format: `{"model": state_dict, "n_sym": int, "epoch": int, "config": {"dim": int, "n_enc": int, "n_dec": int}}`
+- DP key remap: 旧チェックポイントは `dp.net.3.*` → 現行は `dp.net.2.*`。synth.py/train で自動 remap
+
+### JA-only g2p (intersperse なし)
+
+piper-plus は多言語対応で音素間に blank token (id=0) を挿入する (intersperse) が、
+JA-only モデルは intersperse なしで学習している。推論時に `PiperEncoder.encode()` を使うと
+blank が挿入されて mel が壊れる。代わりに以下の JA-only パスを使う:
+
+```python
+from piper_plus_g2p.encode.id_maps import get_phoneme_id_map
+from piper_train.infer_onnx import text_to_phoneme_ids_and_prosody
+id_map = get_phoneme_id_map("ja")
+ids, _ = text_to_phoneme_ids_and_prosody(text, id_map, language="ja", language_id_map=None)
+ph_ids = [1] + ids  # prepend BOS
+```
+
+### Vocos vocoder
+
+- **Full**: dim=512, layers=8, n_fft=1024, 13.5M params
+- **Lite-A**: dim=256, layers=4, n_fft=512, 1.91M params
+- **Lite-B**: dim=192, layers=6, n_fft=512, 1.59M params
+- **Lite-C**: dim=128, layers=4, n_fft=512, 0.58M params
+- checkpoint format: `{"G": state_dict, "config": {"dim", "intermediate_dim", "num_layers", "n_fft", "hop_length"}}`
+- synth.py の vocoder 自動判定: `"G" in ck and "dim" in ck.get("config", {})` → Vocos
+
+### SqueezeWave vocoder
+
+- WaveGlow 派生の normalizing flow。arch params は全て CLI flags
+- **Quality recipe**: NLL pre-train → aux fine-tune → GAN fine-tune (w_mel=45) → BN recalibration
+- BN recalibration は GAN 後に必須 (train/eval 分布ずれで音質劣化)
+- checkpoint format: `{"model": state_dict, "config": arch_params}`
+
+### MB-iSTFT vocoder
+
+- piper-plus decoder アーキテクチャ (upsample → sub-band iSTFT → PQMF synthesis)
+- PQMF: 4 bands, 62 taps, Kaiser window (beta=9), cutoff_ratio=0.142, PR-SNR=64dB
+- ONNX-compatible iSTFT (DFT matrix 方式, `stft_onnx.py`)
+- 学習時にサブバンド STFT loss を使用
+
+### HiFi-GAN vocoder
+
+- piper config (ResBlock2, 256ch, upsample 8×8×4), 1.51M params
+- comparison baseline
+
+### Shared components
+
+- **PiperMelFeatures** (`common/features.py`): the shared mel contract. Any change here breaks compatibility between MiniSpeech and all vocoders.
+- **Discriminators** (Vocos MPD/MRD): GAN 学習で全 vocoder が共有。training-only (zero inference cost)。
 
 ## Conventions
 
-- No build system (no setup.py/pyproject.toml). Plain `pip install -r requirements.txt` + CUDA torch installed separately.
+- No build system. Plain `pip install -r requirements.txt` + CUDA torch installed separately.
 - ONNX export wraps noise `z` as an input (not sampled internally) for NPU determinism.
-- Checkpoint format: `{"model": state_dict, "config": arch_params, ...}` for SqueezeWave; `{"model": state_dict, "n_sym": int, "epoch": int}` for MiniSpeech.
-- Data filelists are newline-separated absolute or repo-relative paths to 22.05 kHz mono wavs.
+- Data filelists are newline-separated paths to 22.05 kHz mono wavs.
 - MiniSpeech manifest: JSON array of `{phoneme_ids, durations (optional), mel (npy path), n_frames}`.
-- BN recalibration (`bake_bnrecal.py`) is mandatory after GAN fine-tune — without it, train/eval distribution mismatch causes audible artifacts.
 
 ## Gotchas
 
 - `w_mel=45` in GAN fine-tune is a tuned anchor — changing it risks quality regression.
-- Self-alignment `--bin-weight` must stay 0 (binarization loss destabilizes alignment; MAS already gives hard durations).
-- Beta-binomial prior is annealed to zero by 40% of training (`prior_w = max(0, 1 - ep/(epochs*0.4))`).
+- Self-alignment `--bin-weight` must stay 0 (binarization loss destabilizes alignment).
+- Beta-binomial prior is annealed to zero by 40% of training.
 - The vendored `src/vocos/` is a trimmed fork (no HuggingFace, no EnCodec). Don't update from upstream without checking removals.
+- `num_workers=0` in MiniSpeech DataLoader is intentional — >0 was slower due to fork/copy overhead for this workload.
+- Bash tool の `timeout` コマンドや `env` 接頭辞越しにモデル読込すると無音死する。export + plain python + ツール側 timeout で回避。

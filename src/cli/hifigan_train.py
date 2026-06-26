@@ -8,9 +8,9 @@ import torch
 from torch.utils.data import DataLoader
 from vocos.discriminators import MultiPeriodDiscriminator, MultiResolutionDiscriminator
 from vocos.loss import DiscriminatorLoss, GeneratorLoss, FeatureMatchingLoss, MelSpecReconstructionLoss
-from sqzw.flow import WavSet
-from sqzw.hifigan_gen import Generator
-from sqzw.gan_train import disc_loss, gen_adv_loss
+from common.dataset import WavSet
+from decoders.hifigan.generator import Generator
+from common.gan_train import disc_loss, gen_adv_loss
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
     ap.add_argument("--mel-coeff", type=float, default=45.0)
     ap.add_argument("--mrd-coeff", type=float, default=0.1)
     ap.add_argument("--save-every", type=int, default=5000)
-    ap.add_argument("--resume", default="", help="load G weights from a checkpoint and fine-tune (step restarts at 0)")
+    ap.add_argument("--resume", default="", help="resume full state (G+D+opt+step) from checkpoint")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,9 +36,6 @@ def main():
         resume_ck = torch.load(a.resume, map_location=dev)
         init_ch = resume_ck.get("init_channels", init_ch)
     G = Generator(init_channels=init_ch).to(dev)
-    if resume_ck is not None:
-        G.load_state_dict(resume_ck["G"])
-        print(f"resumed G from {a.resume} (step {resume_ck.get('step')}, ch={init_ch}) -> fine-tune", flush=True)
     mpd = MultiPeriodDiscriminator().to(dev); mrd = MultiResolutionDiscriminator().to(dev)
     dloss_fn = DiscriminatorLoss(); gloss_fn = GeneratorLoss(); fmloss_fn = FeatureMatchingLoss()
     melloss = MelSpecReconstructionLoss(sample_rate=22050).to(dev)
@@ -49,29 +46,51 @@ def main():
     sch_g = torch.optim.lr_scheduler.CosineAnnealingLR(opt_g, T_max=a.max_steps)
     sch_d = torch.optim.lr_scheduler.CosineAnnealingLR(opt_d, T_max=a.max_steps)
 
+    step = 0
+    if resume_ck is not None:
+        G.load_state_dict(resume_ck["G"])
+        if "mpd" in resume_ck:
+            mpd.load_state_dict(resume_ck["mpd"])
+            mrd.load_state_dict(resume_ck["mrd"])
+            opt_g.load_state_dict(resume_ck["opt_g"])
+            opt_d.load_state_dict(resume_ck["opt_d"])
+            step = resume_ck.get("step", 0)
+            for _ in range(step):
+                sch_g.step(); sch_d.step()
+            print(f"resumed full state from {a.resume} (step {step}, ch={init_ch})", flush=True)
+        else:
+            print(f"resumed G-only from {a.resume} (step {resume_ck.get('step')}, ch={init_ch}) — D/opt fresh", flush=True)
+
     dl = DataLoader(WavSet(a.filelist, a.num_samples), batch_size=a.batch_size, shuffle=True,
-                    num_workers=4, drop_last=True, persistent_workers=True)
-    step = 0; t0 = time.time(); G.train()
+                    num_workers=4, drop_last=True, persistent_workers=True, pin_memory=True)
+    scaler = torch.amp.GradScaler("cuda")
+    if dev.type == "cuda":
+        G = torch.compile(G); mpd = torch.compile(mpd); mrd = torch.compile(mrd)
+    t0 = time.time(); G.train()
     while step < a.max_steps:
         for audio in dl:
-            audio = audio.to(dev)
-            with torch.no_grad():
+            audio = audio.to(dev, non_blocking=True)
+            with torch.no_grad(), torch.amp.autocast("cuda"):
                 audio_hat = G(audio)
-            loss_d = disc_loss(mpd, mrd, dloss_fn, audio, audio_hat, a.mrd_coeff)
-            opt_d.zero_grad(); loss_d.backward(); opt_d.step(); sch_d.step()
+            with torch.amp.autocast("cuda"):
+                loss_d = disc_loss(mpd, mrd, dloss_fn, audio, audio_hat, a.mrd_coeff)
+            opt_d.zero_grad(); scaler.scale(loss_d).backward(); scaler.step(opt_d); sch_d.step()
 
-            audio_hat = G(audio)
-            loss_adv, loss_fm = gen_adv_loss(mpd, mrd, gloss_fn, fmloss_fn, audio, audio_hat, a.mrd_coeff)
-            l_mel = melloss(audio_hat, audio)
-            loss_g = loss_adv + loss_fm + a.mel_coeff * l_mel
-            opt_g.zero_grad(); loss_g.backward(); opt_g.step(); sch_g.step()
+            with torch.amp.autocast("cuda"):
+                audio_hat = G(audio)
+                loss_adv, loss_fm = gen_adv_loss(mpd, mrd, gloss_fn, fmloss_fn, audio, audio_hat, a.mrd_coeff)
+                l_mel = melloss(audio_hat, audio)
+                loss_g = loss_adv + loss_fm + a.mel_coeff * l_mel
+            opt_g.zero_grad(); scaler.scale(loss_g).backward(); scaler.step(opt_g); sch_g.step()
+            scaler.update()
 
             step += 1
             if step % 100 == 0:
                 print(f"step {step}/{a.max_steps} d {loss_d.item():.3f} g {loss_g.item():.3f} mel {l_mel.item():.3f} {time.time()-t0:.0f}s", flush=True)
             if step % a.save_every == 0 or step == a.max_steps:
-                ck = {"G": G.state_dict(), "opt_g": opt_g.state_dict(),
-                      "opt_d": opt_d.state_dict(), "step": step, "init_channels": init_ch}
+                ck = {"G": G.state_dict(), "mpd": mpd.state_dict(), "mrd": mrd.state_dict(),
+                      "opt_g": opt_g.state_dict(), "opt_d": opt_d.state_dict(),
+                      "step": step, "init_channels": init_ch}
                 torch.save(ck, f"{a.out}/hifigan_step{step}.pth")
                 torch.save(ck, f"{a.out}/hifigan_last.pth")
                 print(f"  saved step {step}", flush=True)

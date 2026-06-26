@@ -1,36 +1,9 @@
-"""Flow training/inference helpers shared across train/finetune/eval/bake:
-WavSet (audio-segment dataset), diff_infer (differentiable reverse flow), and
-mrstft_loss (multi-resolution STFT loss)."""
-import random
-import numpy as np
+"""SqueezeWave-specific flow utilities: differentiable reverse flow and
+multi-resolution STFT loss. Used by cli/finetune_aux.py, cli/finetune_gan.py."""
 import torch
 import torch.nn.functional as F
-import soundfile as sf
-from torch.utils.data import Dataset
 
-# multi-resolution STFT (n_fft, hop, win)
 RES = [(512, 128, 512), (1024, 256, 1024), (2048, 512, 2048)]
-
-
-class WavSet(Dataset):
-    """Random fixed-length audio segments from a filelist."""
-    def __init__(self, filelist, num_samples=16384):
-        self.files = [l for l in open(filelist).read().splitlines() if l.strip()]
-        self.n = num_samples
-
-    def __len__(self):
-        return len(self.files)
-
-    def __getitem__(self, i):
-        y, sr = sf.read(self.files[i], dtype="float32")
-        if y.ndim > 1:
-            y = y[:, 0]
-        if len(y) >= self.n:
-            s = random.randint(0, len(y) - self.n)
-            y = y[s:s + self.n]
-        else:
-            y = np.pad(y, (0, self.n - len(y)))
-        return torch.from_numpy(y)
 
 
 def diff_infer(model, mel, sigma):

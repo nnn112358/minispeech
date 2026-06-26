@@ -2,12 +2,12 @@
 Produces EXACTLY the same 80-dim log-mel that the MiniSpeech acoustic model is
 trained to output: spectrogram_torch (magnitude STFT, n_fft=1024, hop=256,
 win=1024, center=False, reflect-pad) -> librosa mel basis (22050,1024,80) ->
-log(clamp 1e-5). Self-contained: vocos + spectrogram_torch (sqzw.mel) are vendored locally."""
+log(clamp 1e-5). Self-contained: vocos + spectrogram_torch (common.mel) are vendored locally."""
 import numpy as np
 import torch
 import librosa
 from vocos.feature_extractors import FeatureExtractor
-from sqzw.mel import spectrogram_torch
+from common.mel import spectrogram_torch
 
 
 class PiperMelFeatures(FeatureExtractor):

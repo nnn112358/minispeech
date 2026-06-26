@@ -8,15 +8,15 @@ import numpy as np, torch, onnxruntime as ort
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
-from sqzw.model import SqueezeWave
-from sqzw.onnx_export import SqueezeWaveONNX, FRAMES
+from decoders.squeezewave.model import SqueezeWave
+from decoders.squeezewave.onnx_export import SqueezeWaveONNX, FRAMES
 
 jp = fm.FontProperties(fname="/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc")
 SR = 22050; AUD = 65536 / SR
 D = "checkpoints/"
 
 
-from sqzw.bench import bench
+from decoders.squeezewave.bench import bench
 
 
 def export_voc(ckpt, path):

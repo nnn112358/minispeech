@@ -8,8 +8,8 @@ so the two are directly comparable."""
 import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
-from sqzw.model import SqueezeWave
-from sqzw.onnx_export import SqueezeWaveONNX, FRAMES
+from decoders.squeezewave.model import SqueezeWave
+from decoders.squeezewave.onnx_export import SqueezeWaveONNX, FRAMES
 
 
 def main():

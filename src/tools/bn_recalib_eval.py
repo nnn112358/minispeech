@@ -6,9 +6,9 @@ import sys, os, random, argparse
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch, torch.nn as nn
 import soundfile as sf
-from sqzw.model import SqueezeWave
-from sqzw.features import PiperMelFeatures
-from sqzw.flow import diff_infer, WavSet
+from decoders.squeezewave.model import SqueezeWave
+from common.features import PiperMelFeatures
+from decoders.squeezewave.flow import diff_infer, WavSet
 from torch.utils.data import DataLoader
 
 SR = 22050

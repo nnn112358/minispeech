@@ -9,8 +9,8 @@ import numpy as np, torch, librosa
 import soundfile as sf
 import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sqzw.model import SqueezeWave
-from sqzw.features import PiperMelFeatures
+from decoders.squeezewave.model import SqueezeWave
+from common.features import PiperMelFeatures
 
 SR = 22050
 VAL = [l for l in open("data/filelist_val.txt").read().splitlines() if l.strip()]

@@ -5,8 +5,8 @@ incl. dilation. Speed is weight-independent, so in-progress ckpts are fine."""
 import sys, os, time, tempfile
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch, onnxruntime as ort
-from sqzw.model import SqueezeWave
-from sqzw.onnx_export import SqueezeWaveONNX, FRAMES
+from decoders.squeezewave.model import SqueezeWave
+from decoders.squeezewave.onnx_export import SqueezeWaveONNX, FRAMES
 
 SR = 22050; AUD = 65536 / SR
 D = "checkpoints/"
@@ -29,7 +29,7 @@ def export(ckpt, path):
     return npar, l, nac, cfg["n_flows"], cfg["WN_config"]["n_channels"], cfg["WN_config"].get("dilation_cycle")
 
 
-from sqzw.bench import bench
+from decoders.squeezewave.bench import bench
 
 
 def main():

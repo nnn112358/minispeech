@@ -4,8 +4,8 @@ the z (noise) calibration tar. mel calib reuses axmodel/dataset/calib_mel.tar.""
 import os, sys, tempfile, tarfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch, onnx
-from sqzw.model import SqueezeWave
-from sqzw.onnx_export import SqueezeWaveONNX, FRAMES
+from decoders.squeezewave.model import SqueezeWave
+from decoders.squeezewave.onnx_export import SqueezeWaveONNX, FRAMES
 
 OUTM = "npu/model"
 OUTD = "npu/dataset"

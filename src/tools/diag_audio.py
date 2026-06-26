@@ -6,8 +6,8 @@ import sys, os, glob
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
-from sqzw.model import SqueezeWave
-from sqzw.features import PiperMelFeatures
+from decoders.squeezewave.model import SqueezeWave
+from common.features import PiperMelFeatures
 
 SR = 22050
 VAL = [l for l in open("data/filelist_val.txt").read().splitlines() if l.strip()]

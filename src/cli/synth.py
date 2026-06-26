@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Full 2-stage TTS: phoneme_ids -> MiniSpeech mel -> vocoder audio.
+"""Full 2-stage TTS: text or phoneme_ids -> MiniSpeech mel -> vocoder audio.
 The speaker/voice comes from the MiniSpeech checkpoint (the vocoder is mostly
-speaker-agnostic). Phonemes come from a manifest entry or --phonemes; text->phoneme
-(OpenJTalk g2p) is a separate step, not bundled here."""
+speaker-agnostic). Input can be Japanese text (--text), manifest entry, or
+comma-separated phoneme_ids (--phonemes)."""
 import os, sys, json, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
 from cli.infer import load_model
-from cli.train_minispeech import MiniSpeech
+from encoder.minispeech import MiniSpeech
 
 SR = 22050
 
@@ -20,36 +20,55 @@ def main():
     ap.add_argument("--manifest", default="fs_data/tyc/fs_manifest.json", help="phoneme_ids source")
     ap.add_argument("--idx", type=int, default=0, help="utterance index in the manifest")
     ap.add_argument("--phonemes", default="", help="comma-separated phoneme_ids (overrides manifest)")
+    ap.add_argument("--text", default="", help="Japanese text (g2p via OpenJTalk, overrides manifest)")
     ap.add_argument("--sigma", type=float, default=0.7)
     ap.add_argument("--out", default="outputs/tts.wav")
     a = ap.parse_args()
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     fck = torch.load(a.fs_ckpt, map_location=dev)
-    n_sym = fck["model"]["emb.weight"].shape[0]
-    fs = MiniSpeech(n_sym=n_sym).to(dev); fs.load_state_dict(fck["model"]); fs.eval()
+    sd = {k.replace("dp.net.3.", "dp.net.2."): v for k, v in fck["model"].items()}
+    n_sym = sd["emb.weight"].shape[0]
+    cfg = fck.get("config", {})
+    fs = MiniSpeech(n_sym=n_sym, d=cfg.get("dim", 256), n_enc=cfg.get("n_enc", 4), n_dec=cfg.get("n_dec", 4)).to(dev)
+    fs.load_state_dict(sd); fs.eval()
 
-    # vocoder: auto-detect SqueezeWave ("model"+"config") / Vocos ("G") / HiFi-GAN ("G"+"init_channels")
+    # vocoder: auto-detect Vocos / SqueezeWave / MB-iSTFT / HiFi-GAN
     vck = torch.load(a.voc_ckpt, map_location=dev)
-    if "config" in vck:                       # SqueezeWave
+    if "G" in vck and "config" in vck and "dim" in vck.get("config", {}):  # Vocos
+        from decoders.vocos.generator import Generator as VGen
+        cfg = vck["config"]
+        voc = VGen(**cfg).to(dev); voc.load_state_dict(vck["G"]); voc.eval()
+        vocode = lambda mel: voc.head(voc.backbone(mel)).squeeze(0)
+    elif "config" in vck:                     # SqueezeWave
         voc, _ = load_model(a.voc_ckpt, dev)
         vocode = lambda mel: voc.infer(mel, sigma=a.sigma).squeeze(0)
+    elif vck.get("vocoder_type") == "mbistft":  # MB-iSTFT
+        from decoders.mb_istft.generator import Generator as MBGen
+        voc = MBGen(init_channels=vck.get("init_channels", 256), n_fft=vck.get("n_fft", 16)).to(dev); voc.load_state_dict(vck["G"]); voc.eval()
+        vocode = lambda mel: voc.mbistft(mel)[0].squeeze(1).squeeze(0)
     elif "init_channels" in vck:              # HiFi-GAN
-        from sqzw.hifigan_gen import Generator as HGen
+        from decoders.hifigan.generator import Generator as HGen
         voc = HGen(init_channels=vck["init_channels"]).to(dev); voc.load_state_dict(vck["G"]); voc.eval()
         vocode = lambda mel: voc.hifigan(mel).squeeze(1).squeeze(0)
-    else:                                     # Vocos
-        from sqzw.vocos_gen import Generator as VGen
+    else:                                     # Vocos (legacy, no config)
+        from decoders.vocos.generator import Generator as VGen
         voc = VGen().to(dev); voc.load_state_dict(vck["G"]); voc.eval()
         vocode = lambda mel: voc.head(voc.backbone(mel)).squeeze(0)
 
-    if a.phonemes:
+    if a.text:
+        from piper_plus_g2p.encode.id_maps import get_phoneme_id_map
+        from piper_train.infer_onnx import text_to_phoneme_ids_and_prosody
+        id_map = get_phoneme_id_map("ja")
+        ids, _ = text_to_phoneme_ids_and_prosody(a.text, id_map, language="ja", language_id_map=None)
+        ph_ids = [1] + ids
+    elif a.phonemes:
         ph_ids = [int(x) for x in a.phonemes.replace(" ", "").split(",") if x != ""]
     else:
         ph_ids = json.load(open(a.manifest))[a.idx]["phoneme_ids"]
     ph = torch.LongTensor(ph_ids).unsqueeze(0).to(dev)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         mel, _ = fs(ph)                                          # (1,80,T) predicted-duration mel
         audio = vocode(mel).cpu().numpy()
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)

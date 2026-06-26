@@ -5,8 +5,8 @@ to ONNX and benches on ORT CPU at the 256-frame / 2.972s cap, vs Vocos."""
 import sys, os, time, tempfile
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch, onnxruntime as ort
-from sqzw.model import SqueezeWave
-from sqzw.onnx_export import SqueezeWaveONNX, FRAMES
+from decoders.squeezewave.model import SqueezeWave
+from decoders.squeezewave.onnx_export import SqueezeWaveONNX, FRAMES
 
 SR = 22050; AUD = 65536 / SR
 
@@ -36,7 +36,7 @@ def export(cfg, path):
     return npar, l
 
 
-from sqzw.bench import bench
+from decoders.squeezewave.bench import bench
 
 
 def main():
