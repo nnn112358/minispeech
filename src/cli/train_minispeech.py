@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MiniSpeech trainer. Two alignment modes:
+"""MiniSpeechEncoder trainer. Two alignment modes:
   --learn-alignment : SELF-ALIGNING (recommended). No external aligner needed.
   (otherwise)       : use precomputed {durations} in the manifest."""
 import os, sys
@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json, argparse, time
 import torch, torch.nn.functional as F
 from torch.utils.data import DataLoader
-from encoder.minispeech import MiniSpeech, FSSet, collate
+from encoder.minispeech import MiniSpeechEncoder, FSSet, collate
 
 
 def main():
@@ -31,7 +31,7 @@ def main():
     print(f"utts={len(items)} n_sym={n_sym} learn_alignment={a.learn_alignment}", flush=True)
     dl = DataLoader(FSSet(a.manifest), batch_size=a.batch_size, shuffle=True, collate_fn=collate, num_workers=0, drop_last=True, pin_memory=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = MiniSpeech(n_sym, d=a.dim, n_enc=a.n_enc, n_dec=a.n_dec, learn_alignment=a.learn_alignment).to(dev)
+    model = MiniSpeechEncoder(n_sym, d=a.dim, n_enc=a.n_enc, n_dec=a.n_dec, learn_alignment=a.learn_alignment).to(dev)
     if a.resume:
         sd = {k.replace("dp.net.3.", "dp.net.2."): v for k, v in torch.load(a.resume, map_location="cpu")["model"].items()}
         model.load_state_dict(sd, strict=False); print(f"resumed {a.resume}", flush=True)

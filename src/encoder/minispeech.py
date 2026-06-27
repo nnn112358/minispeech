@@ -1,4 +1,4 @@
-"""MiniSpeech: compact non-AR acoustic model. OpenJTalk phoneme ids -> 80-mel
+"""MiniSpeechEncoder: compact non-AR acoustic model. OpenJTalk phoneme ids -> 80-mel
 (22050/hop256). Conv-based blocks (depthwise-separable), no self-attention.
 A duration predictor is trained so inference needs no alignment."""
 import json, math
@@ -59,22 +59,62 @@ def length_regulate(x, durations, max_len):
     return torch.stack(outs, 0)
 
 
-class MiniSpeech(nn.Module):
-    def __init__(self, n_sym, d=256, n_enc=4, n_dec=4, n_mel=80, learn_alignment=False):
+def length_regulate_gather(hidden, dur):
+    """ONNX-friendly length regulate for batch=1 using cumsum+gather.
+    No repeat_interleave. All ops are ONNX opset-11+.
+
+    Args:
+        hidden: (1, L, d) encoder hidden states
+        dur: (1, L) integer durations per phoneme
+
+    Returns:
+        expanded: (1, T, d) where T = sum(dur)
+    """
+    cumsum = torch.cumsum(dur[0].clamp(min=0), dim=0)  # (L,)
+    mel_len = cumsum[-1]
+    positions = torch.arange(mel_len, device=hidden.device)  # (T,)
+    # For position t, phoneme index = count(cumsum <= t)
+    indices = (cumsum.unsqueeze(-1) <= positions.unsqueeze(0)).long().sum(dim=0)
+    indices = indices.clamp(max=hidden.shape[1] - 1)
+    return hidden[:, indices, :]  # (1, T, d)
+
+
+class MiniSpeechEncoder(nn.Module):
+    def __init__(self, n_sym, d=256, n_enc=4, n_dec=4, n_mel=80, learn_alignment=False, max_len=2048):
         super().__init__()
         self.emb = nn.Embedding(n_sym, d, padding_idx=0)
         self.enc = nn.ModuleList([ConvBlock(d) for _ in range(n_enc)])
         self.dp = DurationPredictor(d)
         self.dec = nn.ModuleList([ConvBlock(d) for _ in range(n_dec)])
         self.out = nn.Linear(d, n_mel); self.d = d
+        # Precomputed sinusoidal positional encoding (constant table, sliced to T).
+        # Slicing a buffer avoids a runtime `arange().float()` -> Cast(to=FLOAT):
+        # that cast keeps the exported ONNX graph heavier (ScatterND/Range) AND makes
+        # float16 conversion produce a self-contradictory Cast node that ORT rejects.
+        # Non-persistent so existing checkpoints load unchanged (and values are
+        # bit-identical to the old runtime computation).
+        self.register_buffer("_pe", self._build_pe(max_len, d), persistent=False)
         if learn_alignment:
             from encoder.alignment import AlignmentEncoder
             self.aligner = AlignmentEncoder(n_mel=n_mel, n_text=d)
 
+    @staticmethod
+    def _build_pe(L, d):
+        pe = torch.zeros(L, d)
+        pos = torch.arange(L).float().unsqueeze(1)
+        dv = torch.exp(torch.arange(0, d, 2).float() * (-math.log(10000.0) / d))
+        pe[:, 0::2] = torch.sin(pos * dv); pe[:, 1::2] = torch.cos(pos * dv)
+        return pe
+
     def posenc(self, x):
-        T, d = x.shape[1], x.shape[2]; pe = torch.zeros(T, d, device=x.device)
+        T = x.shape[1]
+        if T <= self._pe.shape[0]:                       # ONNX-traced path (constant slice)
+            return x + self._pe[:T].unsqueeze(0)
+        # length beyond the precomputed table (rare; PyTorch-only fallback)
+        d = x.shape[2]
         pos = torch.arange(T, device=x.device).float().unsqueeze(1)
         dv = torch.exp(torch.arange(0, d, 2, device=x.device).float() * (-math.log(10000.0) / d))
+        pe = torch.zeros(T, d, device=x.device)
         pe[:, 0::2] = torch.sin(pos * dv); pe[:, 1::2] = torch.cos(pos * dv)
         return x + pe.unsqueeze(0)
 
@@ -87,6 +127,15 @@ class MiniSpeech(nn.Module):
         y = self.posenc(y_lr)
         for b in self.dec: y = b(y)
         return self.out(y).transpose(1, 2)
+
+    def forward_infer(self, ph):
+        """ONNX-friendly inference: phoneme_ids (1,L) -> mel (1,80,T).
+        Uses cumsum+gather instead of repeat_interleave. All ops ONNX opset-11+."""
+        x = self.encode(ph)
+        log_dur = self.dp(x)
+        dur = torch.clamp(torch.round(torch.exp(log_dur) - 1), min=1).long()
+        expanded = length_regulate_gather(x, dur)
+        return self.decode(expanded)
 
     def forward(self, ph, durations=None, max_frames=None):
         x = self.encode(ph)

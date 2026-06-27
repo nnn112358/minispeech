@@ -5,11 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 Two-stage non-autoregressive Japanese TTS (Duration 展開方式):
-**OpenJTalk g2p → MiniSpeech (text→mel) → Vocoder (mel→audio)**
+**OpenJTalk g2p → MiniSpeechEncoder (text→mel) → Vocoder (mel→audio)**
 
 Vocoder は Vocos / HiFi-GAN / MB-iSTFT から選択可能。
 (SqueezeWave は `_unused/squeezewave/` にアーカイブ済み — active codebase からは外れている)
-All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). MiniSpeech output and vocoder input are bit-identical by design.
+All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). MiniSpeechEncoder output and vocoder input are bit-identical by design.
 
 ## Running scripts
 
@@ -17,7 +17,7 @@ All scripts assume **repo root** (`/home/nnn/mini-jtts`) as cwd. CLI scripts aut
 Python venv: `~/.venvs/piper_ft/bin/python`
 
 ```bash
-# --- 音響モデル (MiniSpeech) ---
+# --- 音響モデル (MiniSpeechEncoder) ---
 # 自己アライメントで学習:
 python src/cli/train_minispeech.py --manifest fs_data/fs_manifest.json --learn-alignment --epochs 500
 
@@ -42,8 +42,9 @@ python src/cli/synth.py --fs-ckpt fs/enc_d192/fs_2000.pth --voc-ckpt checkpoints
 python src/cli/eval_vocos.py --ckpt checkpoints/vocos_lite_a/vocos_last.pth --n 4
 
 # --- ONNX ---
-# encoder + vocoder を ONNX 化 (出力先 onnx_v2/):
-python src/cli/export_onnx_all.py --fs-ckpt fs/enc_d192/fs_2000.pth --voc-ckpt checkpoints/vocos_lite_c/vocos_last.pth --voc-type vocos
+# encoder + vocoder を ONNX 化 (出力先 onnx_v2/)。--slim/--fp16 で最適化も同時に:
+python src/cli/export_onnx_all.py --fs-ckpt fs/enc_d192/fs_2000.pth --voc-ckpt checkpoints/vocos_lite_c/vocos_last.pth --voc-type vocos --slim --fp16
+# encoder のみ / vocoder のみも可 (--voc-ckpt / --fs-ckpt を省略)
 # ONNX のみで text→wav 推論:
 python src/cli/synth_onnx.py --encoder onnx_v2/enc_d192_encoder.onnx --vocoder onnx_v2/vocos_d128_n512_vocoder.onnx --text "おはようございます"
 python src/tools/bench_vocoders.py
@@ -52,7 +53,7 @@ python src/tools/bench_vocoders.py
 ## Code layout
 
 - `src/common/` — shared library (features, mel, modules, dataset, GAN loss, eval loop)
-- `src/encoder/` — MiniSpeech acoustic model, alignment, MAS
+- `src/encoder/` — MiniSpeechEncoder acoustic model, alignment, MAS
 - `src/decoders/hifigan/` — HiFi-GAN (transposed conv)
 - `src/decoders/vocos/` — Vocos (ConvNeXt + iSTFT)
 - `src/decoders/mb_istft/` — MB-iSTFT (multi-band iSTFT + PQMF)
@@ -62,18 +63,19 @@ python src/tools/bench_vocoders.py
 - `scripts/` — bash pipelines that compose CLI scripts into full recipes
 - `npu/` — Pulsar2 config templates (build artifacts gitignored)
 - `_unused/`, `_legacy/` — archived experiments (not part of active codebase)。SqueezeWave 一式 (source / CLI / tools / scripts / artifacts) は `_unused/squeezewave/` に退避済み
-- `fs/` — MiniSpeech チェックポイント (`enc_d{96,128,192,256}/`)
+- `fs/` — MiniSpeechEncoder チェックポイント (`enc_d{96,128,192,256}/`)
 - `checkpoints/` — Vocoder チェックポイント (`vocos_lite_{a,b,c}/`, `vocos_jsut/`, etc.)
 
 ## Key architecture details
 
-### MiniSpeech (encoder)
+### MiniSpeechEncoder
 
 Duration 展開方式の軽量音響モデル。Self-Attention を全て depthwise-separable Conv に置き換え。
 
 - **ConvBlock**: Depthwise Conv (MobileNet) + Pointwise Conv + LayerNorm + FFN (Transformer) + 残差接続
 - **Duration**: `round → long` で整数化 → `repeat_interleave` で展開。Duration は一本化されており VITS の float/ceil 二重定義バグは構造的に発生しない
 - **dim 構成**: `--dim`, `--n-enc`, `--n-dec` で指定。checkpoint に `config` dict として保存され、synth.py が自動検出
+- **位置エンコーディング**: `max_len`(既定 2048≈24s)の正弦波 PE を非永続バッファ `_pe` に precompute し slice。`arange().float()` の `Cast(to=FLOAT)` を排し ONNX を軽量化&fp16 変換可能に(`convert_float_to_float16` が当該 Cast を壊す問題を回避)。値は旧実装と bit-identical、`persistent=False` で旧 checkpoint も無改変ロード可。T>max_len は PyTorch のみ動的 fallback
 - **Self-Alignment** (`--learn-alignment`): cosine-similarity attention + beta-binomial prior + forward-sum (CTC) loss + MAS。Aligner weights は save 時に strip
 - checkpoint format: `{"model": state_dict, "n_sym": int, "epoch": int, "config": {"dim": int, "n_enc": int, "n_dec": int}}`
 - DP key remap: 旧チェックポイントは `dp.net.3.*` → 現行は `dp.net.2.*`。synth.py/train で自動 remap
@@ -121,7 +123,7 @@ WaveGlow 派生の normalizing flow。`_unused/squeezewave/` に退避済みで 
 
 ### Shared components
 
-- **PiperMelFeatures** (`common/features.py`): the shared mel contract. Any change here breaks compatibility between MiniSpeech and all vocoders.
+- **PiperMelFeatures** (`common/features.py`): the shared mel contract. Any change here breaks compatibility between MiniSpeechEncoder and all vocoders.
 - **Discriminators** (Vocos MPD/MRD): GAN 学習で全 vocoder が共有。training-only (zero inference cost)。
 
 ## Conventions
@@ -130,7 +132,7 @@ WaveGlow 派生の normalizing flow。`_unused/squeezewave/` に退避済みで 
 - 現行 vocoder (Vocos / HiFi-GAN / MB-iSTFT) は決定論的な mel→audio。ONNX export は mel 1 入力のみ
   (アーカイブ済み SqueezeWave のみ noise `z` を入力として渡す方式だった)。
 - Data filelists are newline-separated paths to 22.05 kHz mono wavs.
-- MiniSpeech manifest: JSON array of `{phoneme_ids, durations (optional), mel (npy path), n_frames}`.
+- MiniSpeechEncoder manifest: JSON array of `{phoneme_ids, durations (optional), mel (npy path), n_frames}`.
 
 ## Gotchas
 
@@ -138,5 +140,5 @@ WaveGlow 派生の normalizing flow。`_unused/squeezewave/` に退避済みで 
 - Self-alignment `--bin-weight` must stay 0 (binarization loss destabilizes alignment).
 - Beta-binomial prior is annealed to zero by 40% of training.
 - The vendored `src/vocos/` is a trimmed fork (no HuggingFace, no EnCodec). Don't update from upstream without checking removals.
-- `num_workers=0` in MiniSpeech DataLoader is intentional — >0 was slower due to fork/copy overhead for this workload.
+- `num_workers=0` in MiniSpeechEncoder DataLoader is intentional — >0 was slower due to fork/copy overhead for this workload.
 - Bash tool の `timeout` コマンドや `env` 接頭辞越しにモデル読込すると無音死する。export + plain python + ツール側 timeout で回避。

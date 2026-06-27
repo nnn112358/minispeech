@@ -10,9 +10,9 @@ exec > >(tee -a "$LOG") 2>&1
 echo "=== JSUT full pipeline started $(date) ==="
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
-# ---- 1. MiniSpeech encoder (self-aligning) ----
+# ---- 1. MiniSpeechEncoder (self-aligning) ----
 echo ""
-echo "=== [1/3] MiniSpeech encoder (self-aligning, 500 epochs) ==="
+echo "=== [1/3] MiniSpeechEncoder (self-aligning, 500 epochs) ==="
 echo "start: $(date)"
 $PY src/cli/train_minispeech.py \
     --manifest fs_data/jsut_manifest.json \
@@ -23,7 +23,7 @@ $PY src/cli/train_minispeech.py \
     --lr 3e-4 \
     --cosine \
     --save-every 100
-echo "MiniSpeech done: $(date)"
+echo "MiniSpeechEncoder done: $(date)"
 
 # ---- 2. HiFi-GAN (piper config: 256ch, ResBlock2) ----
 echo ""

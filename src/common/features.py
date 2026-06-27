@@ -1,5 +1,5 @@
 """Custom Vocos feature extractor for the JSUT 2-stage TTS.
-Produces EXACTLY the same 80-dim log-mel that the MiniSpeech acoustic model is
+Produces EXACTLY the same 80-dim log-mel that the MiniSpeechEncoder acoustic model is
 trained to output: spectrogram_torch (magnitude STFT, n_fft=1024, hop=256,
 win=1024, center=False, reflect-pad) -> librosa mel basis (22050,1024,80) ->
 log(clamp 1e-5). Self-contained: vocos + spectrogram_torch (common.mel) are vendored locally."""

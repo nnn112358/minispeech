@@ -27,7 +27,7 @@ This project vendors / derives from the following open-source software.
 
 ## Piper — `src/common/mel.py`, `src/encoder/monotonic_align.py`
 - `spectrogram_torch` vendored from https://github.com/rhasspy/piper (MIT License),
-  so the MiniSpeech-output mel and the vocoder-input mel are bit-identical.
+  so the MiniSpeechEncoder-output mel and the vocoder-input mel are bit-identical.
 - `monotonic_align.py` — Monotonic Alignment Search (MAS) の動的計画法。
   Glow-TTS / VITS の monotonic_align (MIT License) を piper 経由で vendored。
   自己アライメント (`encoder/alignment.py`) から呼び出し、hard な継続長を抽出する。
@@ -44,7 +44,7 @@ This project vendors / derives from the following open-source software.
 ## Starting point
 - The SqueezeWave integration was bootstrapped from
   https://github.com/alokprasad/fastspeech_squeezewave (only SqueezeWave was used;
-  the acoustic model MiniSpeech is an independent implementation).
+  the acoustic model MiniSpeechEncoder is an independent implementation).
 
 ## Data
 - Training uses the JSUT corpus (https://sites.google.com/site/shinnosuketakamichi/publication/jsut),
