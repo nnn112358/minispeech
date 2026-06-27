@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone Vocos mel-vocoder GAN trainer. Reuses vocos's proven components:
+"""Standalone Vocos mel-vocoder GAN trainer (DEFAULT vocoder). Reuses vocos's proven components:
 PiperMelFeatures -> VocosBackbone -> ISTFTHead, with MultiPeriod/MultiResolution
 discriminators + Vocos losses. Trains on 22050 Hz wavs (filelist)."""
 import os, sys, time, argparse
@@ -86,7 +86,7 @@ def main():
     dl = DataLoader(WavSet(a.filelist, a.num_samples), batch_size=a.batch_size, shuffle=True,
                     num_workers=4, drop_last=True, persistent_workers=True, pin_memory=True)
     scaler = torch.amp.GradScaler("cuda")
-    if dev.type == "cuda":
+    if dev.type == "cuda" and n_fft >= 1024:
         G = torch.compile(G); mpd = torch.compile(mpd); mrd = torch.compile(mrd)
     t0 = time.time(); G.train()
     while step < a.max_steps:

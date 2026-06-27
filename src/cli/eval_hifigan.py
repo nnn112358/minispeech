@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HiFi-GAN copy-synthesis eval: same mel-L1 reconstruction metric as infer.py."""
+"""HiFi-GAN copy-synthesis eval (comparison vocoder): same mel-L1 reconstruction metric."""
 import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch

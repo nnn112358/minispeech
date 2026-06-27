@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""HiFi-GAN mel-vocoder GAN trainer. Same discriminators/losses as vocos_train.py
+"""HiFi-GAN mel-vocoder GAN trainer (evaluation/comparison vocoder; default is Vocos).
+Same discriminators/losses as vocos_train.py
 with the HiFi-GAN generator swapped in, so quality/speed differences are purely
 the generator. --init-channels 256 = piper config (default), 512 = V1."""
 import os, sys, time, argparse

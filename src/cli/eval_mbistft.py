@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MB-iSTFT vocoder copy-synthesis evaluation."""
+"""MB-iSTFT copy-synthesis evaluation (comparison vocoder)."""
 import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch

@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two-stage non-autoregressive Japanese TTS (Duration 展開方式):
 **OpenJTalk g2p → MiniSpeechEncoder (text→mel) → Vocoder (mel→audio)**
 
-Vocoder は Vocos / HiFi-GAN / MB-iSTFT から選択可能。
+**デフォルト構成は MiniSpeechEncoder + Vocos**。HiFi-GAN / MB-iSTFT は評価・比較用の
+ボコーダで、同一の mel 契約・同一データで学習・評価できる(default を置き換えるものではない)。
 (SqueezeWave は `_unused/squeezewave/` にアーカイブ済み — active codebase からは外れている)
 All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). MiniSpeechEncoder output and vocoder input are bit-identical by design.
 
@@ -94,7 +95,7 @@ ids, _ = text_to_phoneme_ids_and_prosody(text, id_map, language="ja", language_i
 ph_ids = [1] + ids  # prepend BOS
 ```
 
-### Vocos vocoder
+### Vocos vocoder (default)
 
 - **Full**: dim=512, layers=8, n_fft=1024, 13.5M params
 - **Lite-A**: dim=256, layers=4, n_fft=512, 1.91M params
@@ -109,14 +110,14 @@ WaveGlow 派生の normalizing flow。`_unused/squeezewave/` に退避済みで 
 復元する場合は source (`decoders/squeezewave/`) と CLI (`train.py` / `finetune_aux.py` / `finetune_gan.py` /
 `bake_bnrecal.py` / `infer.py` 等) を元の場所に戻し、synth.py / export_onnx_all.py の auto-detect 分岐を再追加する。
 
-### MB-iSTFT vocoder
+### MB-iSTFT vocoder (評価・比較用)
 
 - piper-plus decoder アーキテクチャ (upsample → sub-band iSTFT → PQMF synthesis)
 - PQMF: 4 bands, 62 taps, Kaiser window (beta=9), cutoff_ratio=0.142, PR-SNR=64dB
 - ONNX-compatible iSTFT (DFT matrix 方式, `stft_onnx.py`)
 - 学習時にサブバンド STFT loss を使用
 
-### HiFi-GAN vocoder
+### HiFi-GAN vocoder (評価・比較用)
 
 - piper config (ResBlock2, 256ch, upsample 8×8×4), 1.51M params
 - comparison baseline

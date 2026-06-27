@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""MB-iSTFT mel-vocoder GAN trainer. Same discriminators/losses as hifigan_train.py
+"""MB-iSTFT mel-vocoder GAN trainer (evaluation/comparison vocoder; default is Vocos).
+Same discriminators/losses as hifigan_train.py
 with the MB-iSTFT generator swapped in + sub-band multi-resolution STFT loss.
 --init-channels 256 = piper-plus config (default)."""
 import os, sys, time, argparse
