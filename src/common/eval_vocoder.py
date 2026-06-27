@@ -1,5 +1,5 @@
 """Shared copy-synthesis evaluation loop for all vocoders.
-Used by cli/eval_vocos.py, cli/eval_hifigan.py, cli/eval_mbistft.py, cli/infer.py."""
+Used by cli/eval_vocos.py, cli/eval_hifigan.py, cli/eval_mbistft.py."""
 import os, time
 import numpy as np
 import torch

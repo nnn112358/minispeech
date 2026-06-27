@@ -7,7 +7,6 @@ import os, sys, json, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
-from cli.infer import load_model
 from encoder.minispeech import MiniSpeech
 
 SR = 22050
@@ -16,12 +15,11 @@ SR = 22050
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fs-ckpt", default="fs/tyc_fs/fs_300.pth", help="MiniSpeech checkpoint (defines the voice)")
-    ap.add_argument("--voc-ckpt", default="checkpoints/tyc_c64_gan/sqzwgan_bnrecal.pth")
+    ap.add_argument("--voc-ckpt", default="checkpoints/vocos_lite_a/vocos_last.pth")
     ap.add_argument("--manifest", default="fs_data/tyc/fs_manifest.json", help="phoneme_ids source")
     ap.add_argument("--idx", type=int, default=0, help="utterance index in the manifest")
     ap.add_argument("--phonemes", default="", help="comma-separated phoneme_ids (overrides manifest)")
     ap.add_argument("--text", default="", help="Japanese text (g2p via OpenJTalk, overrides manifest)")
-    ap.add_argument("--sigma", type=float, default=0.7)
     ap.add_argument("--out", default="outputs/tts.wav")
     a = ap.parse_args()
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,16 +31,13 @@ def main():
     fs = MiniSpeech(n_sym=n_sym, d=cfg.get("dim", 256), n_enc=cfg.get("n_enc", 4), n_dec=cfg.get("n_dec", 4)).to(dev)
     fs.load_state_dict(sd); fs.eval()
 
-    # vocoder: auto-detect Vocos / SqueezeWave / MB-iSTFT / HiFi-GAN
+    # vocoder: auto-detect Vocos / MB-iSTFT / HiFi-GAN
     vck = torch.load(a.voc_ckpt, map_location=dev)
     if "G" in vck and "config" in vck and "dim" in vck.get("config", {}):  # Vocos
         from decoders.vocos.generator import Generator as VGen
         cfg = vck["config"]
         voc = VGen(**cfg).to(dev); voc.load_state_dict(vck["G"]); voc.eval()
         vocode = lambda mel: voc.head(voc.backbone(mel)).squeeze(0)
-    elif "config" in vck:                     # SqueezeWave
-        voc, _ = load_model(a.voc_ckpt, dev)
-        vocode = lambda mel: voc.infer(mel, sigma=a.sigma).squeeze(0)
     elif vck.get("vocoder_type") == "mbistft":  # MB-iSTFT
         from decoders.mb_istft.generator import Generator as MBGen
         voc = MBGen(init_channels=vck.get("init_channels", 256), n_fft=vck.get("n_fft", 16)).to(dev); voc.load_state_dict(vck["G"]); voc.eval()

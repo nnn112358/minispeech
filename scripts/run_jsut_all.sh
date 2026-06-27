@@ -1,6 +1,5 @@
 #!/bin/bash
-# Full JSUT training pipeline: encoder → HiFi-GAN → Vocos → SqueezeWave
-# SqueezeWave is already trained (NLL→aux→GAN→BN recal done), so only eval.
+# Full JSUT training pipeline: encoder → HiFi-GAN → Vocos
 set -euo pipefail
 cd /home/nnn/mini-jtts
 PY=~/.venvs/piper_ft/bin/python
@@ -13,7 +12,7 @@ nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 
 # ---- 1. MiniSpeech encoder (self-aligning) ----
 echo ""
-echo "=== [1/4] MiniSpeech encoder (self-aligning, 500 epochs) ==="
+echo "=== [1/3] MiniSpeech encoder (self-aligning, 500 epochs) ==="
 echo "start: $(date)"
 $PY src/cli/train_minispeech.py \
     --manifest fs_data/jsut_manifest.json \
@@ -28,7 +27,7 @@ echo "MiniSpeech done: $(date)"
 
 # ---- 2. HiFi-GAN (piper config: 256ch, ResBlock2) ----
 echo ""
-echo "=== [2/4] HiFi-GAN vocoder (piper 256ch, 50k steps) ==="
+echo "=== [2/3] HiFi-GAN vocoder (piper 256ch, 50k steps) ==="
 echo "start: $(date)"
 $PY src/cli/hifigan_train.py \
     --filelist data/filelist_train.txt \
@@ -43,7 +42,7 @@ echo "HiFi-GAN done: $(date)"
 
 # ---- 3. Vocos (resume from 40k) ----
 echo ""
-echo "=== [3/4] Vocos vocoder (resume 40k, +10k steps) ==="
+echo "=== [3/3] Vocos vocoder (resume 40k, +10k steps) ==="
 echo "start: $(date)"
 $PY src/cli/vocos_train.py \
     --filelist data/filelist_train.txt \
@@ -55,13 +54,6 @@ $PY src/cli/vocos_train.py \
     --mel-coeff 45.0 \
     --save-every 5000
 echo "Vocos done: $(date)"
-
-# ---- 4. SqueezeWave (already trained — just confirm) ----
-echo ""
-echo "=== [4/4] SqueezeWave — already trained ==="
-echo "Existing checkpoints:"
-ls -lh checkpoints/ckpts_c64_f8_l4_s_gan/sqzwgan_bnrecal.pth 2>/dev/null || echo "  (not found)"
-ls -lh checkpoints/ckpts_a256_c128_q_gan/sqzwgan_bnrecal.pth 2>/dev/null || echo "  (not found)"
 
 echo ""
 echo "=== ALL DONE $(date) ==="

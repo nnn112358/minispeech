@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Two-stage non-autoregressive Japanese TTS (FastSpeech 系):
+Two-stage non-autoregressive Japanese TTS (Duration 展開方式):
 **OpenJTalk g2p → MiniSpeech (text→mel) → Vocoder (mel→audio)**
 
-Vocoder は Vocos / SqueezeWave / HiFi-GAN / MB-iSTFT から選択可能。
+Vocoder は Vocos / HiFi-GAN / MB-iSTFT から選択可能。
+(SqueezeWave は `_unused/squeezewave/` にアーカイブ済み — active codebase からは外れている)
 All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=1024, hop=256, win=1024, center=False, log-clamp 1e-5). MiniSpeech output and vocoder input are bit-identical by design.
 
 ## Running scripts
@@ -24,9 +25,6 @@ python src/cli/train_minispeech.py --manifest fs_data/fs_manifest.json --learn-a
 python src/cli/train_minispeech.py --manifest fs_data/fs_manifest.json --dim 192 --n-enc 4 --n-dec 4 --epochs 2000 --cosine
 
 # --- ボコーダ ---
-# SqueezeWave 4段学習を一括実行:
-bash scripts/run_gan_finish.sh
-
 # Vocos (lite構成指定可):
 python src/cli/vocos_train.py --filelist data/filelist_train.txt --dim 256 --num-layers 4 --n-fft 512
 
@@ -40,11 +38,14 @@ python src/cli/hifigan_train.py --filelist data/filelist_train.txt --out checkpo
 # テキストから音声を生成 (encoderのconfig自動検出):
 python src/cli/synth.py --fs-ckpt fs/enc_d192/fs_2000.pth --voc-ckpt checkpoints/vocos_lite_a/vocos_last.pth --text "おはようございます"
 
-# ボコーダ単体の評価:
-python src/cli/infer.py --ckpt checkpoints/<run>/sqzwgan_bnrecal.pth --n 4 --sigma 0.7
+# ボコーダ単体の評価 (copy-synthesis):
+python src/cli/eval_vocos.py --ckpt checkpoints/vocos_lite_a/vocos_last.pth --n 4
 
 # --- ONNX ---
-python src/cli/export_onnx.py
+# encoder + vocoder を ONNX 化 (出力先 onnx_v2/):
+python src/cli/export_onnx_all.py --fs-ckpt fs/enc_d192/fs_2000.pth --voc-ckpt checkpoints/vocos_lite_c/vocos_last.pth --voc-type vocos
+# ONNX のみで text→wav 推論:
+python src/cli/synth_onnx.py --encoder onnx_v2/enc_d192_encoder.onnx --vocoder onnx_v2/vocos_d128_n512_vocoder.onnx --text "おはようございます"
 python src/tools/bench_vocoders.py
 ```
 
@@ -52,7 +53,6 @@ python src/tools/bench_vocoders.py
 
 - `src/common/` — shared library (features, mel, modules, dataset, GAN loss, eval loop)
 - `src/encoder/` — MiniSpeech acoustic model, alignment, MAS
-- `src/decoders/squeezewave/` — SqueezeWave (normalizing flow)
 - `src/decoders/hifigan/` — HiFi-GAN (transposed conv)
 - `src/decoders/vocos/` — Vocos (ConvNeXt + iSTFT)
 - `src/decoders/mb_istft/` — MB-iSTFT (multi-band iSTFT + PQMF)
@@ -61,7 +61,7 @@ python src/tools/bench_vocoders.py
 - `src/vocos/` — vendored Vocos (trimmed, MIT); discriminators used for GAN training only
 - `scripts/` — bash pipelines that compose CLI scripts into full recipes
 - `npu/` — Pulsar2 config templates (build artifacts gitignored)
-- `_unused/`, `_legacy/` — archived experiments (not part of active codebase)
+- `_unused/`, `_legacy/` — archived experiments (not part of active codebase)。SqueezeWave 一式 (source / CLI / tools / scripts / artifacts) は `_unused/squeezewave/` に退避済み
 - `fs/` — MiniSpeech チェックポイント (`enc_d{96,128,192,256}/`)
 - `checkpoints/` — Vocoder チェックポイント (`vocos_lite_{a,b,c}/`, `vocos_jsut/`, etc.)
 
@@ -69,7 +69,7 @@ python src/tools/bench_vocoders.py
 
 ### MiniSpeech (encoder)
 
-FastSpeech 系の軽量音響モデル。Self-Attention を全て depthwise-separable Conv に置き換え。
+Duration 展開方式の軽量音響モデル。Self-Attention を全て depthwise-separable Conv に置き換え。
 
 - **ConvBlock**: Depthwise Conv (MobileNet) + Pointwise Conv + LayerNorm + FFN (Transformer) + 残差接続
 - **Duration**: `round → long` で整数化 → `repeat_interleave` で展開。Duration は一本化されており VITS の float/ceil 二重定義バグは構造的に発生しない
@@ -101,12 +101,11 @@ ph_ids = [1] + ids  # prepend BOS
 - checkpoint format: `{"G": state_dict, "config": {"dim", "intermediate_dim", "num_layers", "n_fft", "hop_length"}}`
 - synth.py の vocoder 自動判定: `"G" in ck and "dim" in ck.get("config", {})` → Vocos
 
-### SqueezeWave vocoder
+### SqueezeWave vocoder (アーカイブ済み)
 
-- WaveGlow 派生の normalizing flow。arch params は全て CLI flags
-- **Quality recipe**: NLL pre-train → aux fine-tune → GAN fine-tune (w_mel=45) → BN recalibration
-- BN recalibration は GAN 後に必須 (train/eval 分布ずれで音質劣化)
-- checkpoint format: `{"model": state_dict, "config": arch_params}`
+WaveGlow 派生の normalizing flow。`_unused/squeezewave/` に退避済みで active codebase からは外れている。
+復元する場合は source (`decoders/squeezewave/`) と CLI (`train.py` / `finetune_aux.py` / `finetune_gan.py` /
+`bake_bnrecal.py` / `infer.py` 等) を元の場所に戻し、synth.py / export_onnx_all.py の auto-detect 分岐を再追加する。
 
 ### MB-iSTFT vocoder
 
@@ -128,7 +127,8 @@ ph_ids = [1] + ids  # prepend BOS
 ## Conventions
 
 - No build system. Plain `pip install -r requirements.txt` + CUDA torch installed separately.
-- ONNX export wraps noise `z` as an input (not sampled internally) for NPU determinism.
+- 現行 vocoder (Vocos / HiFi-GAN / MB-iSTFT) は決定論的な mel→audio。ONNX export は mel 1 入力のみ
+  (アーカイブ済み SqueezeWave のみ noise `z` を入力として渡す方式だった)。
 - Data filelists are newline-separated paths to 22.05 kHz mono wavs.
 - MiniSpeech manifest: JSON array of `{phoneme_ids, durations (optional), mel (npy path), n_frames}`.
 
