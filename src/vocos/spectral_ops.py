@@ -2,77 +2,96 @@ import numpy as np
 import scipy
 import torch
 from torch import nn, view_as_real, view_as_complex
+from torch.nn import functional as F
 
 
 class ISTFT(nn.Module):
-    """
-    Custom implementation of ISTFT since torch.istft doesn't allow custom padding (other than `center=True`) with
-    windowing. This is because the NOLA (Nonzero Overlap Add) check fails at the edges.
-    See issue: https://github.com/pytorch/pytorch/issues/62323
-    Specifically, in the context of neural vocoding we are interested in "same" padding analogous to CNNs.
-    The NOLA constraint is met as we trim padded samples anyway.
+    """ONNX-compatible iSTFT using conv_transpose1d with precomputed inverse DFT basis.
+
+    Replaces torch.fft.irfft + fold with a real-valued inverse DFT basis applied
+    via conv_transpose1d for overlap-add. Hann window and OLA normalisation are
+    absorbed into the basis. All ops are ONNX opset-15 compatible (no complex
+    types, no fold/col2im, no FFT). Follows piper-plus OnnxISTFT approach.
 
     Args:
         n_fft (int): Size of Fourier transform.
         hop_length (int): The distance between neighboring sliding window frames.
-        win_length (int): The size of window frame and STFT filter.
-        padding (str, optional): Type of padding. Options are "center" or "same". Defaults to "same".
+        win_length (int): Unused (kept for API compat). n_fft is always used.
+        padding (str, optional): Type of padding. Options are "center" or "same".
     """
 
-    def __init__(self, n_fft: int, hop_length: int, win_length: int, padding: str = "same"):
+    def __init__(self, n_fft: int, hop_length: int, win_length: int = 0, padding: str = "same"):
         super().__init__()
         if padding not in ["center", "same"]:
             raise ValueError("Padding must be 'center' or 'same'.")
         self.padding = padding
         self.n_fft = n_fft
         self.hop_length = hop_length
-        self.win_length = win_length
-        window = torch.hann_window(win_length)
-        self.register_buffer("window", window)
+        inverse_basis = self._build_inverse_basis(n_fft, hop_length)
+        self.register_buffer("inverse_basis", inverse_basis)
 
-    def forward(self, spec: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the Inverse Short Time Fourier Transform (ISTFT) of a complex spectrogram.
+    def forward(self, real: torch.Tensor, imag: torch.Tensor) -> torch.Tensor:
+        """Reconstruct waveform from real and imaginary spectrograms.
 
         Args:
-            spec (Tensor): Input complex spectrogram of shape (B, N, T), where B is the batch size,
-                            N is the number of frequency bins, and T is the number of time frames.
+            real: (B, n_fft//2+1, T) real part of STFT.
+            imag: (B, n_fft//2+1, T) imaginary part of STFT.
 
         Returns:
-            Tensor: Reconstructed time-domain signal of shape (B, L), where L is the length of the output signal.
+            Tensor: (B, T_out) reconstructed waveform.
         """
-        if self.padding == "center":
-            # Fallback to pytorch native implementation
-            return torch.istft(spec, self.n_fft, self.hop_length, self.win_length, self.window, center=True)
-        elif self.padding == "same":
-            pad = (self.win_length - self.hop_length) // 2
-        else:
-            raise ValueError("Padding must be 'center' or 'same'.")
+        combined = torch.cat([real, imag], dim=1)  # (B, n_fft+2, T)
+        y = F.conv_transpose1d(combined, self.inverse_basis, stride=self.hop_length)
 
-        assert spec.dim() == 3, "Expected a 3D tensor as input"
-        B, N, T = spec.shape
+        if self.padding == "same":
+            pad = (self.n_fft - self.hop_length) // 2
+            y = y[:, :, pad:-pad]
 
-        # Inverse FFT
-        ifft = torch.fft.irfft(spec, self.n_fft, dim=1, norm="backward")
-        ifft = ifft * self.window[None, :, None]
+        return y.squeeze(1)
 
-        # Overlap and Add
-        output_size = (T - 1) * self.hop_length + self.win_length
-        y = torch.nn.functional.fold(
-            ifft, output_size=(1, output_size), kernel_size=(1, self.win_length), stride=(1, self.hop_length),
-        )[:, 0, 0, pad:-pad]
+    @staticmethod
+    def _build_inverse_basis(n_fft: int, hop_length: int) -> torch.Tensor:
+        """Build windowed inverse DFT basis with Hann window and OLA normalisation.
 
-        # Window envelope
-        window_sq = self.window.square().expand(1, T, -1).transpose(1, 2)
-        window_envelope = torch.nn.functional.fold(
-            window_sq, output_size=(1, output_size), kernel_size=(1, self.win_length), stride=(1, self.hop_length),
-        ).squeeze()[pad:-pad]
+        Returns tensor of shape (n_fft+2, 1, n_fft) for conv_transpose1d."""
+        cutoff = n_fft // 2 + 1
 
-        # Normalize
-        assert (window_envelope > 1e-11).all()
-        y = y / window_envelope
+        n_idx = np.arange(n_fft)
+        k_idx = np.arange(cutoff)
+        angle = 2.0 * np.pi * np.outer(n_idx, k_idx) / n_fft
+        cos_table = np.cos(angle)
+        sin_table = np.sin(angle)
 
-        return y
+        S_re = np.zeros((n_fft, cutoff))
+        S_im = np.zeros((n_fft, cutoff))
+        S_re[:, 0] = 1.0 / n_fft
+        S_re[:, cutoff - 1] = cos_table[:, cutoff - 1] / n_fft
+        S_im[:, cutoff - 1] = -sin_table[:, cutoff - 1] / n_fft
+        for ki in range(1, cutoff - 1):
+            S_re[:, ki] = 2.0 * cos_table[:, ki] / n_fft
+            S_im[:, ki] = -2.0 * sin_table[:, ki] / n_fft
+
+        S = np.hstack([S_re, S_im])  # (n_fft, 2*cutoff)
+        window = np.hanning(n_fft + 1)[:n_fft]
+        # Windowed-OLA normalisation: the synthesis window envelope under
+        # constant overlap-add equals sum(w^2)/hop (matches torch.istft).
+        wss = np.sum(window**2) / hop_length
+        inverse_basis = S * (window[:, np.newaxis] / wss)
+        inverse_basis = inverse_basis.T[:, np.newaxis, :]  # (2*cutoff, 1, n_fft)
+
+        return torch.FloatTensor(inverse_basis)
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata,
+                              strict, missing_keys, unexpected_keys, error_msgs):
+        # Old checkpoints have 'window' buffer instead of 'inverse_basis'.
+        # Drop it silently — inverse_basis is computed from n_fft/hop_length.
+        old_key = prefix + "window"
+        if old_key in state_dict:
+            del state_dict[old_key]
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict,
+            missing_keys, unexpected_keys, error_msgs,
+        )
 
 
 class MDCT(nn.Module):

@@ -54,19 +54,10 @@ class ISTFTHead(FourierHead):
         """
         x = self.out(x).transpose(1, 2)
         mag, p = x.chunk(2, dim=1)
-        mag = torch.exp(mag)
-        mag = torch.clip(mag, max=1e2)  # safeguard to prevent excessively large magnitudes
-        # wrapping happens here. These two lines produce real and imaginary value
-        x = torch.cos(p)
-        y = torch.sin(p)
-        # recalculating phase here does not produce anything new
-        # only costs time
-        # phase = torch.atan2(y, x)
-        # S = mag * torch.exp(phase * 1j)
-        # better directly produce the complex value 
-        S = mag * (x + 1j * y)
-        audio = self.istft(S)
-        return audio
+        mag = torch.exp(mag).clamp(max=1e2)
+        real = mag * torch.cos(p)
+        imag = mag * torch.sin(p)
+        return self.istft(real, imag)
 
 
 class IMDCTSymExpHead(FourierHead):

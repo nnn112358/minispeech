@@ -25,3 +25,7 @@ npu/*
 *.axmodel
 *.s16
 *.f32
+
+# transient run artifacts
+logs/
+onnxruntime_profile_*.json
