@@ -1,0 +1,42 @@
+[project]
+name = "minispeech"
+version = "0.1.0"
+description = "日本語テキストから音声を生成する軽量 TTS (MiniSpeechEncoder + ボコーダ)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "nnn112358" }]
+
+# src/ 以下のスクリプトを `uv run python src/cli/xxx.py` で実行するための依存一式。
+dependencies = [
+    "torch",
+    "torchaudio",
+    "numpy",
+    "scipy",
+    "librosa",
+    "soundfile",
+    "numba",
+    "einops",
+    "pyyaml",
+    "onnxruntime",
+    "pytorch-lightning",
+    "transformers",
+    "huggingface-hub",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+# 日本語テキストからの g2p (synth.py / synth_onnx.py で --text を使う場合)
+g2p = [
+    "piper-plus-g2p",
+    "pyopenjtalk-plus",
+]
+
+[project.urls]
+Homepage = "https://github.com/nnn112358/minispeech"
+"ONNX inference" = "https://github.com/nnn112358/minispeech_onnx"
+Demo = "https://nnn112358.github.io/minispeech_demo/"
+
+[tool.uv]
+# パッケージ化せず、依存解決と仮想環境管理のみに使う (スクリプトはパス指定で実行)。
+package = false
