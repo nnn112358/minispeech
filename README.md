@@ -22,15 +22,15 @@
 
 テキスト (の音素列) からメルスペクトログラムを生成する音響モデルです。
 
-[piper](https://github.com/rhasspy/piper) (VITS ベースの TTS) を分解し、重い部分 (Self-Attention, VAE, Normalizing Flow) を削って軽量な depthwise-separable Conv ブロックに置き換えたものです。
-自己アライメントのコード (`monotonic_align.py`) や mel 計算 (`mel.py`) も piper から流用しています。
+[piper-plus](https://github.com/ayutaz/piper-plus)をベースに、エンコーダの重い部分 (Self-Attention, VAE, Normalizing Flow) を削って軽量な depthwise-separable Conv ブロックに置き換えたものです。
+G2P、自己アライメントのコード (`monotonic_align.py`) や mel 計算 (`mel.py`) を piper-plus から流用しています。
 
 ### 設計の背景
 
-piper (VITS) はエンドツーエンドで高品質ですが、モデル全体で約 30M パラメータあり、
+piper-plus(VITS) はエンドツーエンドで高品質ですが、モデル全体で約 30M パラメータあり、
 構造が複雑 (Transformer encoder + VAE + Flow + HiFi-GAN decoder の一体型) です。
 
-MiniSpeechEncoder では、piper の構成要素のうち:
+MiniSpeechEncoder では、piper-plus の構成要素のうち:
 - **Transformer encoder** → depthwise-separable Conv に置き換え
 - **VAE + Flow** → 削除 (Duration Predictor + Length Regulator で十分)
 - **HiFi-GAN decoder** → 分離して独立ボコーダに (交換可能に)
