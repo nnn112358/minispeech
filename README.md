@@ -5,7 +5,7 @@
 1. **MiniSpeechEncoder** がテキストからメルスペクトログラム (声の特徴) を生成
 2. **Vocoder** がメルスペクトログラムから音声波形を生成
 
-デフォルトのボコーダは **Vocos** です。**HiFi-GAN**・**MB-iSTFT** も実装しており、評価用として同じ条件で学習・評価できます.
+デフォルトのボコーダは **Vocos** です。**HiFi-GAN**・**MB-iSTFT** も実装しており、評価用として同じ条件で学習・評価できます。
 
 > 🔊 **デモ**: [合成音声サンプルの比較](https://nnn112358.github.io/minispeech_demo/)
 > (エンコーダ × ボコーダの組み合わせを音声とメルスペクトログラムで比較)
@@ -23,7 +23,7 @@
 テキスト (の音素列) からメルスペクトログラムを生成する音響モデルです。
 
 [piper](https://github.com/rhasspy/piper) (VITS ベースの TTS) を分解し、重い部分 (Self-Attention, VAE, Normalizing Flow) を削って軽量な depthwise-separable Conv ブロックに置き換えたものです。
-自己アライメントのコード (`monotonic_align.py`) や mel 計算 (`mel.py`) は piper 。
+自己アライメントのコード (`monotonic_align.py`) や mel 計算 (`mel.py`) も piper から流用しています。
 
 ### 設計の背景
 
@@ -261,7 +261,7 @@ uv run python src/tools/bench_vocoders.py     # ボコーダの速度比較
 ### minispeech_onnx — ONNX 推論実装 (エッジ向け)
 
 [**minispeech_onnx**](https://github.com/nnn112358/minispeech_onnx) は、MiniSpeechEncoder + Vocos を
-エッジデバイス向けの ONNX 推論実装です。JSUT basic5000 (単一話者日本語,
+使ったエッジデバイス向けの ONNX 推論実装です。JSUT basic5000 (単一話者日本語,
 CC-BY-SA 4.0) で学習済みの ONNX モデル (encoder + vocoder) を同梱し、テキストを渡すだけで音声を生成できます。
 
 ### デモ
