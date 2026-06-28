@@ -1,8 +1,8 @@
 #!/bin/bash
 # Encoder dim sweep: d=192, d=128, d=96 (all enc=4 dec=4, 2000 epochs)
 set -e
-cd /home/nnn/mini-jtts
-PY=~/.venvs/piper_ft/bin/python
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PYTHON:-python}"
 MANIFEST=fs_data/fs_manifest.json
 
 for DIM in 192 128 96; do

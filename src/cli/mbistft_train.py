@@ -17,18 +17,22 @@ from common.gan_train import disc_loss, gen_adv_loss
 
 def main():
     ap = argparse.ArgumentParser()
+    # --- I/O & schedule (shared across all vocoder trainers) ---
     ap.add_argument("--filelist", default="data/filelist_train.txt")
     ap.add_argument("--out", default="checkpoints/mbistft_jsut")
     ap.add_argument("--max-steps", type=int, default=300000)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--num-samples", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--init-channels", type=int, default=256)
-    ap.add_argument("--n-fft", type=int, default=16, choices=[16, 32, 64])
+    ap.add_argument("--save-every", type=int, default=5000)
+    # --- loss weights (shared + sub-band STFT) ---
     ap.add_argument("--mel-coeff", type=float, default=45.0)
     ap.add_argument("--mrd-coeff", type=float, default=0.1)
     ap.add_argument("--sub-stft-coeff", type=float, default=1.0)
-    ap.add_argument("--save-every", type=int, default=5000)
+    # --- model-specific architecture ---
+    ap.add_argument("--init-channels", type=int, default=256)
+    ap.add_argument("--n-fft", type=int, default=16, choices=[16, 32, 64])
+    # --- resume ---
     ap.add_argument("--resume", default="", help="resume full state (G+D+opt+step) from checkpoint")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -42,7 +46,8 @@ def main():
         init_ch = resume_ck.get("init_channels", init_ch)
         n_fft = resume_ck.get("n_fft", n_fft)
     G = Generator(init_channels=init_ch, n_fft=n_fft).to(dev)
-    mpd = MultiPeriodDiscriminator().to(dev); mrd = MultiResolutionDiscriminator().to(dev)
+    mpd = MultiPeriodDiscriminator().to(dev)
+    mrd = MultiResolutionDiscriminator().to(dev)
     dloss_fn = DiscriminatorLoss(); gloss_fn = GeneratorLoss(); fmloss_fn = FeatureMatchingLoss()
     melloss = MelSpecReconstructionLoss(sample_rate=22050).to(dev)
     sub_stft_loss = MultiResolutionSTFTLoss().to(dev)

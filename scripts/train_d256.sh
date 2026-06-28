@@ -1,8 +1,8 @@
 #!/bin/bash
 # d=256 training on JSUT (same conditions as sweep: 2000ep, bs16, cosine)
 set -e
-cd /home/nnn/mini-jtts
-PY=~/.venvs/piper_ft/bin/python
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PYTHON:-python}"
 MANIFEST=fs_data/fs_manifest.json
 DIM=256
 OUT="fs/enc_d${DIM}"

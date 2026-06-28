@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
-cd /home/nnn/mini-jtts
-PY=~/.venvs/piper_ft/bin/python
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PYTHON:-python}"
 MANIFEST=fs_data/fs_manifest.json
 
 echo "=== Waiting for d=256 (PID $1) to finish ==="

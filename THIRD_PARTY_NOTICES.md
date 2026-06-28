@@ -3,7 +3,7 @@
 This project vendors / derives from the following open-source software.
 
 ## Vocos — `src/vocos/`
-- Source: https://github.com/charactr-platform/vocos (MIT License)
+- Source: https://github.com/gemelo-ai/vocos (formerly charactr-platform/vocos; MIT License)
 - License text: `src/vocos/LICENSE`
 - Used as the comparison-baseline vocoder (VocosBackbone + ISTFTHead) and for its
   discriminators (MPD/MRD) and losses during GAN fine-tuning.
@@ -11,7 +11,7 @@ This project vendors / derives from the following open-source software.
   `feature_extractors.py` (removed `EncodecFeatures`) to drop the `encodec` /
   `transformers` / `huggingface_hub` dependencies, which this project does not use.
 
-## SqueezeWave / WaveGlow — `src/decoders/squeezewave/model.py`
+## SqueezeWave / WaveGlow — `_unused/squeezewave/decoders/squeezewave/model.py` (archived)
 - SqueezeWave: https://github.com/tianrengao/SqueezeWave
 - Derived from NVIDIA WaveGlow (https://github.com/NVIDIA/waveglow), BSD-3-Clause.
   The original NVIDIA copyright notice is retained in the file header.

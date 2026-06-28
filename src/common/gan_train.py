@@ -1,5 +1,5 @@
 """Shared GAN training utilities: discriminator/generator loss computation.
-Used by cli/vocos_train.py, cli/hifigan_train.py, cli/finetune_gan.py."""
+Used by cli/vocos_train.py, cli/hifigan_train.py, cli/mbistft_train.py."""
 
 
 def disc_loss(mpd, mrd, dloss, y, y_hat, mrd_coeff):

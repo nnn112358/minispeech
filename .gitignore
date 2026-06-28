@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 .DS_Store
+.venv/
+*.venv/
 
 # Trained models / data / generated outputs — NOT committed.
 # Bring your own JSUT data; publish checkpoints & axmodels via GitHub Releases.
@@ -10,8 +12,8 @@ data/
 fs/
 fs_data/
 outputs/
-_unused/
 _legacy/
+# _unused/ holds the archived SqueezeWave codebase, intentionally tracked (see README).
 
 # NPU: keep only the *.json Pulsar2 config templates; ignore all build
 # artifacts & calibration data (output*/, model/, dataset/, calib_*/ — some root-owned)
@@ -28,4 +30,5 @@ npu/*
 
 # transient run artifacts
 logs/
+*.log
 onnxruntime_profile_*.json

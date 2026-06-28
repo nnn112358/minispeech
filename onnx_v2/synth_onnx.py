@@ -13,23 +13,22 @@
 
 PyTorch 不要。依存は onnxruntime + numpy + soundfile + piper-plus-g2p のみで、
 すべて **uv が自動解決** する (上の PEP 723 インラインメタデータ)。
-任意の encoder × vocoder ONNX を組み合わせて推論できる。SqueezeWave 系
-(追加入力 `z` を要するボコーダ) にも対応 — z は自動でガウスノイズを供給する。
+任意の encoder × vocoder ONNX を組み合わせて推論できる。
 
 g2p は piper-plus-g2p (PyPI) の JA-only パス (intersperse なし) を使い、
-先頭に BOS=1 を付与する。特定の venv (piper_ft 等) への依存はない。
+先頭に BOS=1 を付与する。特定の venv への依存はない。
+
+デプロイ用 fp16 は encoder=enc_onnx/ vocoder=vocoder_onnx/ に置く。
+--encoder / --vocoder はファイル名のみでもこれらを探索する。
 
 実行 (依存は初回に自動インストール):
   uv run synth_onnx.py --text "おはようございます" --out out.wav
   ./synth.sh --text "おはようございます"          # 同梱ラッパー (uv run のショートカット)
 
 例:
-  # encoder/vocoder を明示
-  uv run synth_onnx.py --encoder enc_d192_encoder.onnx \
-      --vocoder vocos_d256_n512_vocoder.onnx --text "..." --out out.wav
-
-  # SqueezeWave ボコーダ (z 自動供給)
-  uv run synth_onnx.py --vocoder sqzw_f8c64_vocoder.onnx --text "..." --sigma 0.7
+  # encoder/vocoder を明示 (ファイル名のみで enc_onnx/ vocoder_onnx/ を探索)
+  uv run synth_onnx.py --encoder enc_d192_encoder_slim_fp16.onnx \
+      --vocoder vocos_d256_n512_vocoder_slim_fp16.onnx --text "..." --out out.wav
 
   # 音素ID直接指定 (g2p 不要)
   uv run synth_onnx.py --phonemes 1,10,14,8,38,10,11,10,8,2
@@ -58,22 +57,29 @@ import numpy as np
 import soundfile as sf
 
 SR = 22050
-HOP = 256  # PiperMelFeatures hop_length (mel frame -> audio sample)
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 DEFAULT_ENCODER = "enc_d192_encoder_slim_fp16.onnx"
 DEFAULT_VOCODER = "vocos_d256_n512_vocoder_slim_fp16.onnx"
 BENCH_RUNS = 10
 
+# デプロイ用 fp16 を encoder は enc_onnx/、vocoder は vocoder_onnx/ に置く。
+# ファイル名のみ指定された場合はこの順でサブディレクトリも探索する (cwd 非依存)。
+SEARCH_DIRS = ("", "enc_onnx", "vocoder_onnx")
+
 
 # ── path / session helpers ───────────────────────────────────────────
 
 def _resolve(path: str) -> str:
-    """相対パスはスクリプトのあるディレクトリ基準で解決 (cwd 非依存)。"""
+    """相対パスを解決する。そのまま / スクリプト位置 / 既知サブディレクトリ
+    (enc_onnx, vocoder_onnx) の順に探し、最初に存在したものを返す。"""
     if os.path.isabs(path) or os.path.exists(path):
         return path
-    cand = os.path.join(HERE, path)
-    return cand if os.path.exists(cand) else path
+    for sub in SEARCH_DIRS:
+        cand = os.path.join(HERE, sub, path)
+        if os.path.exists(cand):
+            return cand
+    return path
 
 
 def _resolve_providers(provider: str) -> list[str]:
@@ -168,43 +174,22 @@ class OnnxTTS:
     """encoder ONNX (phoneme_ids->mel) + vocoder ONNX (mel->audio) の2段推論。"""
 
     def __init__(self, encoder_path: str, vocoder_path: str, *,
-                 provider: str = "auto", threads: int = 1, sigma: float = 0.7, seed: int = 0):
+                 provider: str = "auto", threads: int = 1):
+        encoder_path, vocoder_path = _resolve(encoder_path), _resolve(vocoder_path)
         providers = _resolve_providers(provider)
         self.encoder = _make_session(encoder_path, providers, threads)
         self.vocoder = _make_session(vocoder_path, providers, threads)
         self.encoder_name = os.path.basename(encoder_path)
         self.vocoder_name = os.path.basename(vocoder_path)
         self.device = self.encoder.get_providers()[0].replace("ExecutionProvider", "")
-        self.sigma = sigma
-        self.rng = np.random.default_rng(seed)
 
     def synthesize(self, phoneme_ids: list[int]) -> SynthResult:
         ph = np.asarray([phoneme_ids], dtype=np.int64)
         mel, enc_ms = _timed(lambda: self.encoder.run(None, {"phoneme_ids": ph})[0])
-        feeds = self._vocoder_feeds(mel)
+        feeds = {"mel": mel.astype(np.float32)}
         out, voc_ms = _timed(lambda: self.vocoder.run(None, feeds)[0])
         audio = np.clip(np.asarray(out).squeeze(), -1.0, 1.0).astype(np.float32)
         return SynthResult(mel=mel, audio=audio, enc_ms=enc_ms, voc_ms=voc_ms)
-
-    def _vocoder_feeds(self, mel: np.ndarray) -> dict:
-        """mel と (必要なら) ノイズ z を vocoder の入力名に合わせて組み立てる。
-
-        SqueezeWave 系は追加入力 `z [1, C, T_z]` を要する。ONNX wrapper は内部で
-        sigma=1.0 を掛けるため、torch infer(sigma) 相当にするには z を sigma 倍して渡す。
-        audio_len = T*HOP = C*T_z より T_z = T*HOP//C。
-        """
-        feeds = {}
-        T = mel.shape[2]
-        for inp in self.vocoder.get_inputs():
-            if inp.name == "mel":
-                feeds["mel"] = mel.astype(np.float32)
-            elif inp.name == "z":
-                C = inp.shape[1] if isinstance(inp.shape[1], int) else 256  # n_audio_channel
-                T_z = T * HOP // C
-                feeds["z"] = self.rng.standard_normal((1, C, T_z)).astype(np.float32) * self.sigma
-            else:
-                raise ValueError(f"未知の vocoder 入力: {inp.name}")
-        return feeds
 
 
 # ── CLI ──────────────────────────────────────────────────────────────
@@ -216,8 +201,6 @@ def _parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--text", default="", help="日本語テキスト (g2p: piper-plus-g2p)")
     ap.add_argument("--phonemes", default="", help="カンマ区切り phoneme_ids (--text の代わり)")
     ap.add_argument("--out", default="onnx_v2_out.wav")
-    ap.add_argument("--sigma", type=float, default=0.7, help="SqueezeWave のノイズスケール")
-    ap.add_argument("--seed", type=int, default=0, help="z ノイズの乱数シード (再現性)")
     ap.add_argument("--threads", type=int, default=1, help="onnxruntime スレッド数 (CPU)")
     ap.add_argument("--provider", choices=["auto", "cpu", "cuda"], default="auto",
                     help="実行プロバイダ (auto: GPU があれば使用)")
@@ -267,8 +250,7 @@ def main(argv=None) -> None:
 
     phoneme_ids = _phoneme_ids_from_args(args)
     provider = "cuda" if args.gpu else args.provider
-    tts = OnnxTTS(enc_path, voc_path, provider=provider,
-                  threads=args.threads, sigma=args.sigma, seed=args.seed)
+    tts = OnnxTTS(enc_path, voc_path, provider=provider, threads=args.threads)
 
     result = tts.synthesize(phoneme_ids)
     _write_wav(args.out, result.audio)

@@ -16,16 +16,20 @@ from common.gan_train import disc_loss, gen_adv_loss
 
 def main():
     ap = argparse.ArgumentParser()
+    # --- I/O & schedule (shared across all vocoder trainers) ---
     ap.add_argument("--filelist", default="data/filelist_train.txt")
     ap.add_argument("--out", default="checkpoints/hifigan")
     ap.add_argument("--max-steps", type=int, default=300000)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--num-samples", type=int, default=16384)
     ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--init-channels", type=int, default=256, help="256=piper (default), 512=HiFi-GAN V1")
+    ap.add_argument("--save-every", type=int, default=5000)
+    # --- loss weights (shared) ---
     ap.add_argument("--mel-coeff", type=float, default=45.0)
     ap.add_argument("--mrd-coeff", type=float, default=0.1)
-    ap.add_argument("--save-every", type=int, default=5000)
+    # --- model-specific architecture ---
+    ap.add_argument("--init-channels", type=int, default=256, help="256=piper (default), 512=HiFi-GAN V1")
+    # --- resume ---
     ap.add_argument("--resume", default="", help="resume full state (G+D+opt+step) from checkpoint")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -37,7 +41,8 @@ def main():
         resume_ck = torch.load(a.resume, map_location=dev)
         init_ch = resume_ck.get("init_channels", init_ch)
     G = Generator(init_channels=init_ch).to(dev)
-    mpd = MultiPeriodDiscriminator().to(dev); mrd = MultiResolutionDiscriminator().to(dev)
+    mpd = MultiPeriodDiscriminator().to(dev)
+    mrd = MultiResolutionDiscriminator().to(dev)
     dloss_fn = DiscriminatorLoss(); gloss_fn = GeneratorLoss(); fmloss_fn = FeatureMatchingLoss()
     melloss = MelSpecReconstructionLoss(sample_rate=22050).to(dev)
     print(f"HiFi-GAN G params={sum(p.numel() for p in G.parameters())/1e6:.2f}M (init_ch={init_ch}) device={dev}", flush=True)

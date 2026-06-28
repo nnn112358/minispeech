@@ -1,0 +1,18 @@
+[project]
+name = "mini-jtts-onnx"
+version = "0.1.0"
+description = "ONNX-only Japanese TTS inference (text -> mel -> wav), PyTorch 不要"
+readme = "README.md"
+requires-python = ">=3.11"  # piper-plus-g2p==0.2.0 が >=3.11 を要求
+dependencies = [
+    "onnxruntime",
+    "numpy",
+    "soundfile",
+    "piper-plus-g2p==0.2.0",
+    "pyopenjtalk-plus==0.4.1.post8",
+]
+
+# synth_onnx.py は単一スクリプト (PEP 723 でも自己完結) なのでパッケージ化はしない。
+# `uv run python synth_onnx.py ...` で依存だけ解決した環境で実行する。
+[tool.uv]
+package = false

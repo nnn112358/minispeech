@@ -1,8 +1,8 @@
 #!/bin/bash
 # Full JSUT training pipeline: encoder → HiFi-GAN → Vocos
 set -euo pipefail
-cd /home/nnn/mini-jtts
-PY=~/.venvs/piper_ft/bin/python
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PY="${PYTHON:-python}"
 LOG=logs/jsut_all_$(date +%Y%m%d_%H%M%S).log
 mkdir -p logs fs/jsut_align checkpoints/hifigan_jsut checkpoints/vocos_jsut
 

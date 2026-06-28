@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
-PY=~/.venvs/piper_ft/bin/python
+PY="${PYTHON:-python}"
 FL=data/filelist_train.txt
 STEPS=10000
 SAVE=2000
 BS=16
-cd /home/nnn/mini-jtts
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "=== [1/3] HiFi-GAN (resume from step 5000) ==="
 stdbuf -oL $PY -u src/cli/hifigan_train.py \

@@ -7,7 +7,7 @@
 export PYTHONPATH=""
 export CUDA_VISIBLE_DEVICES=0
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PY=${PYTHON:-/home/nnn/piper-wavehax-venv/bin/python}
+PY=${PYTHON:-python}
 TYC=data/filelist_tyc_train.txt
 VAL=data/filelist_tyc_val.txt
 STEPS=2000

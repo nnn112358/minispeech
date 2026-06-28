@@ -14,8 +14,8 @@ All stages share identical mel features (`PiperMelFeatures`: sr=22050, n_fft=102
 
 ## Running scripts
 
-All scripts assume **repo root** (`/home/nnn/mini-jtts`) as cwd. CLI scripts auto-add `src/` to sys.path.
-Python venv: `~/.venvs/piper_ft/bin/python`
+All scripts assume the **repo root** as cwd. CLI scripts auto-add `src/` to sys.path.
+Python: a venv with `requirements.txt` installed (`python -m venv .venv && pip install -r requirements.txt`).
 
 ```bash
 # --- 音響モデル (MiniSpeechEncoder) ---
@@ -64,8 +64,8 @@ python src/tools/bench_vocoders.py
 - `scripts/` — bash pipelines that compose CLI scripts into full recipes
 - `npu/` — Pulsar2 config templates (build artifacts gitignored)
 - `_unused/`, `_legacy/` — archived experiments (not part of active codebase)。SqueezeWave 一式 (source / CLI / tools / scripts / artifacts) は `_unused/squeezewave/` に退避済み
-- `fs/` — MiniSpeechEncoder チェックポイント (`enc_d{96,128,192,256}/`)
-- `checkpoints/` — Vocoder チェックポイント (`vocos_lite_{a,b,c}/`, `vocos_jsut/`, etc.)
+- `fs/` — MiniSpeechEncoder チェックポイント (`enc_d{64,96,128,192,256,384}/`)
+- `checkpoints/` — Vocoder チェックポイント (`vocos_lite_{a,b,c}/`, `vocos_jsut/`, `vocos_tiny64/`, `hifigan_jsut/`, `mbistft_jsut*/`, `*_ft/`)
 
 ## Key architecture details
 
@@ -101,6 +101,8 @@ ph_ids = [1] + ids  # prepend BOS
 - **Lite-A**: dim=256, layers=4, n_fft=512, 1.91M params
 - **Lite-B**: dim=192, layers=6, n_fft=512, 1.59M params
 - **Lite-C**: dim=128, layers=4, n_fft=512, 0.58M params
+- param 数は学習重みのみ。ONNX デプロイサイズ(iSTFT basis 等のバッファ込み・d64〜d512 全構成)は
+  [onnx_v2/README.md](onnx_v2/README.md) を唯一の基準とする (Lite-A=`vocos_d256`, Lite-C=`vocos_d128`)
 - checkpoint format: `{"G": state_dict, "config": {"dim", "intermediate_dim", "num_layers", "n_fft", "hop_length"}}`
 - synth.py の vocoder 自動判定: `"G" in ck and "dim" in ck.get("config", {})` → Vocos
 
@@ -119,7 +121,7 @@ WaveGlow 派生の normalizing flow。`_unused/squeezewave/` に退避済みで 
 
 ### HiFi-GAN vocoder (評価・比較用)
 
-- piper config (ResBlock2, 256ch, upsample 8×8×4), 1.51M params
+- piper config (ResBlock2, 256ch, upsample 8×8×4), 1.46M params
 - comparison baseline
 
 ### Shared components

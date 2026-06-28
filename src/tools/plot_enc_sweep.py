@@ -15,20 +15,20 @@ def parse_log(path):
     return epochs, mel, dur
 
 # d=256: chain 3 sessions
-e1, m1, d1 = parse_log("/home/nnn/mini-jtts/_legacy/fs_train.log")
-e2, m2, d2 = parse_log("/home/nnn/mini-jtts/_legacy/fs_ft.log")
-e3, m3, d3 = parse_log("/home/nnn/mini-jtts/fs/jsut_10k.log")
+e1, m1, d1 = parse_log("_legacy/fs_train.log")
+e2, m2, d2 = parse_log("_legacy/fs_ft.log")
+e3, m3, d3 = parse_log("fs/jsut_10k.log")
 d256_ep = e1 + [500 + x for x in e2] + [1000 + x for x in e3]
 d256_mel = m1 + m2 + m3
 d256_dur = d1 + d2 + d3
 
 # d=192, d=128, d=96
-e192, m192, dur192 = parse_log("/home/nnn/mini-jtts/fs/enc_d192.log")
-e128, m128, dur128 = parse_log("/home/nnn/mini-jtts/fs/enc_d128.log")
-e96, m96, dur96 = parse_log("/home/nnn/mini-jtts/fs/enc_d96.log")
+e192, m192, dur192 = parse_log("fs/enc_d192.log")
+e128, m128, dur128 = parse_log("fs/enc_d128.log")
+e96, m96, dur96 = parse_log("fs/enc_d96.log")
 
 # d=256 (JSUT, same conditions as sweep)
-e256j, m256j, dur256j = parse_log("/home/nnn/mini-jtts/fs/enc_d256.log")
+e256j, m256j, dur256j = parse_log("fs/enc_d256.log")
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7))
 
