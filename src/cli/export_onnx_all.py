@@ -16,7 +16,7 @@ import os, sys, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import torch.nn as nn
-from encoder.minispeech import MiniSpeechEncoder
+from encoder.efficient import encoder_from_config
 
 
 # ── Encoder wrapper ─────────────────────────────────────────────────
@@ -87,18 +87,23 @@ def onnx_export(wrap, inputs, path, opset, in_names, out_names, dyn_axes):
 
 def export_encoder(ckpt_path, out_path, opset=18):
     fck = torch.load(ckpt_path, map_location="cpu")
-    sd = {k.replace("dp.net.3.", "dp.net.2."): v for k, v in fck["model"].items()}
-    n_sym = sd["emb.weight"].shape[0]
+    sd = {k.replace("dp.net.3.", "dp.net.2."): v for k, v in fck["model"].items()}  # conv DP remap (no-op for efficient)
+    n_sym = (sd.get("emb.weight") if "emb.weight" in sd else sd["encoder.emb.weight"]).shape[0]
     cfg = fck.get("config", {})
-    dim = cfg.get("dim", 256)
-    n_enc = cfg.get("n_enc", 4)
-    n_dec = cfg.get("n_dec", 4)
 
-    fs = MiniSpeechEncoder(n_sym=n_sym, d=dim, n_enc=n_enc, n_dec=n_dec)
+    fs = encoder_from_config(n_sym, cfg)
     fs.load_state_dict(sd)
     fs.eval()
-    print(f"  encoder: d={dim} enc={n_enc} dec={n_dec} n_sym={n_sym} "
-          f"params={count_params(fs):.2f}M")
+    if cfg.get("arch") == "efficient":
+        w = cfg.get("embed_dim", 128) // cfg.get("reduction", 2)
+        key = f"enc_eff{w}"
+        print(f"  encoder: efficient embed={cfg.get('embed_dim',128)} reduction={cfg.get('reduction',2)} "
+              f"w={w} depth={cfg.get('depth',2)} n_sym={n_sym} params={count_params(fs):.2f}M")
+    else:
+        dim = cfg.get("dim", 256)
+        key = f"enc_d{dim}"
+        print(f"  encoder: d={dim} enc={cfg.get('n_enc',4)} dec={cfg.get('n_dec',4)} n_sym={n_sym} "
+              f"params={count_params(fs):.2f}M")
 
     wrap = EncoderONNX(fs).eval()
     ph = torch.LongTensor([[1, 10, 14, 8, 38, 10, 11, 10, 8, 2]])
@@ -108,7 +113,7 @@ def export_encoder(ckpt_path, out_path, opset=18):
     onnx_export(wrap, (ph,), out_path, opset,
                 ["phoneme_ids"], ["mel"],
                 {"phoneme_ids": {1: "L"}, "mel": {2: "T"}})
-    return f"enc_d{dim}"
+    return key
 
 
 # ── Export: vocos ────────────────────────────────────────────────────

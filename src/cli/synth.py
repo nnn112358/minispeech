@@ -7,7 +7,7 @@ import os, sys, json, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, torch
 import soundfile as sf
-from encoder.minispeech import MiniSpeechEncoder
+from encoder.efficient import encoder_from_config
 
 SR = 22050
 
@@ -25,18 +25,30 @@ def main():
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     fck = torch.load(a.fs_ckpt, map_location=dev)
-    sd = {k.replace("dp.net.3.", "dp.net.2."): v for k, v in fck["model"].items()}
-    n_sym = sd["emb.weight"].shape[0]
+    sd = {k.replace("dp.net.3.", "dp.net.2."): v for k, v in fck["model"].items()}  # conv DP remap (no-op for efficient)
+    n_sym = (sd.get("emb.weight") if "emb.weight" in sd else sd["encoder.emb.weight"]).shape[0]
     cfg = fck.get("config", {})
-    fs = MiniSpeechEncoder(n_sym=n_sym, d=cfg.get("dim", 256), n_enc=cfg.get("n_enc", 4), n_dec=cfg.get("n_dec", 4)).to(dev)
+    fs = encoder_from_config(n_sym, cfg).to(dev)
     fs.load_state_dict(sd); fs.eval()
 
     # vocoder: auto-detect Vocos / MB-iSTFT / HiFi-GAN
     vck = torch.load(a.voc_ckpt, map_location=dev)
+    if "G" in vck:  # torch.compile (n_fft>=1024) saves keys with a _orig_mod. prefix
+        vck["G"] = {k.replace("_orig_mod.", ""): v for k, v in vck["G"].items()}
+
+    def _load_voc(voc, G_sd):
+        # deterministic iSTFT basis/window buffers are recomputed at init; some
+        # (lite) checkpoints don't store them, so allow only those to be missing.
+        miss, unexp = voc.load_state_dict(G_sd, strict=False)
+        bad = [k for k in miss if "basis" not in k and "window" not in k]
+        if bad or unexp:
+            raise RuntimeError(f"vocoder load mismatch: missing={bad} unexpected={list(unexp)}")
+        return voc
+
     if "G" in vck and "config" in vck and "dim" in vck.get("config", {}):  # Vocos
         from decoders.vocos.generator import Generator as VGen
         cfg = vck["config"]
-        voc = VGen(**cfg).to(dev); voc.load_state_dict(vck["G"]); voc.eval()
+        voc = _load_voc(VGen(**cfg).to(dev), vck["G"]).eval()
         vocode = lambda mel: voc.head(voc.backbone(mel)).squeeze(0)
     elif vck.get("vocoder_type") == "mbistft":  # MB-iSTFT
         from decoders.mb_istft.generator import Generator as MBGen
@@ -48,7 +60,7 @@ def main():
         vocode = lambda mel: voc.hifigan(mel).squeeze(1).squeeze(0)
     else:                                     # Vocos (legacy, no config)
         from decoders.vocos.generator import Generator as VGen
-        voc = VGen().to(dev); voc.load_state_dict(vck["G"]); voc.eval()
+        voc = _load_voc(VGen().to(dev), vck["G"]).eval()
         vocode = lambda mel: voc.head(voc.backbone(mel)).squeeze(0)
 
     if a.text:

@@ -8,12 +8,25 @@ from torch.utils.data import Dataset
 
 
 class FSSet(Dataset):
-    def __init__(self, manifest): self.items = json.load(open(manifest))
+    def __init__(self, manifest, cache_mels=False):
+        self.items = json.load(open(manifest))
+        # opt-in lazy RAM cache: with num_workers=0 the mel .npy reads are
+        # synchronous and dominate epoch time for small models; caching the mels
+        # (~70KB each) removes the disk-I/O stall. Off by default so very large
+        # datasets don't blow up RAM.
+        self.cache = {} if cache_mels else None
     def __len__(self): return len(self.items)
+    def _mel(self, i, path):
+        if self.cache is None:
+            return torch.from_numpy(np.load(path)).float()
+        m = self.cache.get(i)
+        if m is None:
+            m = torch.from_numpy(np.load(path)).float(); self.cache[i] = m
+        return m
     def __getitem__(self, i):
         it = self.items[i]
         dur = torch.LongTensor(it["durations"]) if "durations" in it else torch.zeros(len(it["phoneme_ids"]), dtype=torch.long)
-        return (torch.LongTensor(it["phoneme_ids"]), dur, torch.from_numpy(np.load(it["mel"])).float())
+        return (torch.LongTensor(it["phoneme_ids"]), dur, self._mel(i, it["mel"]))
 
 
 def collate(b):
